@@ -1,0 +1,436 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Config represents the agent configuration
+type Config struct {
+	// Collection settings
+	CollectionInterval time.Duration `yaml:"collection_interval" json:"collection_interval"`
+
+	// Ingestor settings
+	IngestorEndpoint string        `yaml:"ingestor_endpoint" json:"ingestor_endpoint"`
+	HTTPTimeout      time.Duration `yaml:"http_timeout" json:"http_timeout"`
+
+	// Agent identification
+	VMID   string            `yaml:"vm_id" json:"vm_id"`
+	Labels map[string]string `yaml:"labels" json:"labels"`
+
+	// Collector configuration
+	Collectors CollectorConfig `yaml:"collectors" json:"collectors"`
+
+	// Logging
+	LogLevel string `yaml:"log_level" json:"log_level"`
+
+	// Rate limiting
+	MaxRetries    int           `yaml:"max_retries" json:"max_retries"`
+	RetryInterval time.Duration `yaml:"retry_interval" json:"retry_interval"`
+}
+
+// CollectorConfig defines which collectors are enabled
+type CollectorConfig struct {
+	// Process metrics
+	Processes bool `yaml:"processes" json:"processes"`
+
+	// CPU metrics
+	CPU     bool `yaml:"cpu" json:"cpu"`
+	CPUFreq bool `yaml:"cpu_freq" json:"cpu_freq"`
+	LoadAvg bool `yaml:"loadavg" json:"loadavg"`
+
+	// Memory metrics
+	Memory bool `yaml:"memory" json:"memory"`
+	VMStat bool `yaml:"vmstat" json:"vmstat"`
+
+	// Storage metrics
+	Disk       bool `yaml:"disk" json:"disk"`
+	DiskStats  bool `yaml:"diskstats" json:"diskstats"`
+	Filesystem bool `yaml:"filesystem" json:"filesystem"`
+
+	// Network metrics
+	Network  bool `yaml:"network" json:"network"`
+	NetDev   bool `yaml:"netdev" json:"netdev"`
+	NetStat  bool `yaml:"netstat" json:"netstat"`
+	Sockstat bool `yaml:"sockstat" json:"sockstat"`
+
+	// System metrics
+	Uname      bool `yaml:"uname" json:"uname"`
+	Time       bool `yaml:"time" json:"time"`
+	Uptime     bool `yaml:"uptime" json:"uptime"`
+	Entropy    bool `yaml:"entropy" json:"entropy"`
+	Interrupts bool `yaml:"interrupts" json:"interrupts"`
+
+	// Additional metrics
+	Thermal   bool `yaml:"thermal" json:"thermal"`
+	Pressure  bool `yaml:"pressure" json:"pressure"`
+	Schedstat bool `yaml:"schedstat" json:"schedstat"`
+}
+
+// DefaultConfig returns a configuration with sensible defaults
+func DefaultConfig() *Config {
+	vmID := getVMIDFromDMIDecode()
+	if vmID == "" {
+		hostname, _ := os.Hostname()
+		if hostname == "" {
+			hostname = "unknown"
+		}
+		vmID = hostname
+	}
+
+	return &Config{
+		CollectionInterval: 30 * time.Second,
+		IngestorEndpoint:   "http://10.0.0.3:8080/resource-manager/api/v1/metrics/ingest",
+		HTTPTimeout:        30 * time.Second,
+		VMID:               vmID,
+		Labels:             make(map[string]string),
+		Collectors: CollectorConfig{
+			// Process metrics (required for this story)
+			Processes: true,
+
+			// CPU metrics
+			CPU:     true,
+			CPUFreq: true,
+			LoadAvg: true,
+
+			// Memory metrics
+			Memory: true,
+			VMStat: true,
+
+			// Storage metrics
+			Disk:       true,
+			DiskStats:  true,
+			Filesystem: true,
+
+			// Network metrics
+			Network:  true,
+			NetDev:   true,
+			NetStat:  true,
+			Sockstat: true,
+
+			// System metrics
+			Uname:      true,
+			Time:       true,
+			Uptime:     true,
+			Entropy:    true,
+			Interrupts: true,
+
+			// Additional metrics
+			Thermal:   true,
+			Pressure:  true,
+			Schedstat: true,
+		},
+		LogLevel:      "info",
+		MaxRetries:    3,
+		RetryInterval: 5 * time.Second,
+	}
+}
+
+// getVMIDFromDMIDecode attempts to get VM ID from dmidecode
+func getVMIDFromDMIDecode() string {
+	// Try dmidecode first
+	cmd := exec.Command("dmidecode", "-s", "system-uuid")
+	output, err := cmd.Output()
+	if err == nil {
+		vmID := strings.TrimSpace(string(output))
+		if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" {
+			return vmID
+		}
+	}
+
+	// Fallback to machine-id
+	if machineID, err := os.ReadFile("/etc/machine-id"); err == nil {
+		if id := strings.TrimSpace(string(machineID)); id != "" {
+			return id
+		}
+	}
+
+	// Fallback to boot-id
+	if bootID, err := os.ReadFile("/proc/sys/kernel/random/boot_id"); err == nil {
+		if id := strings.TrimSpace(string(bootID)); id != "" {
+			return id
+		}
+	}
+
+	return ""
+}
+
+// Load reads configuration from environment variables and config file
+func Load() (*Config, error) {
+	cfg := DefaultConfig()
+
+	// Try to load from config file first
+	if configPath := os.Getenv("SC_AGENT_CONFIG"); configPath != "" {
+		if err := cfg.loadFromFile(configPath); err != nil {
+			return nil, fmt.Errorf("failed to load config file %s: %w", configPath, err)
+		}
+	}
+
+	// Override with environment variables
+	cfg.loadFromEnv()
+
+	// Validate configuration
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("configuration validation failed: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// loadFromFile loads configuration from a YAML file
+func (c *Config) loadFromFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	return yaml.Unmarshal(data, c)
+}
+
+// loadFromEnv loads configuration from environment variables
+func (c *Config) loadFromEnv() {
+	if val := os.Getenv("SC_COLLECTION_INTERVAL"); val != "" {
+		if duration, err := time.ParseDuration(val); err == nil {
+			c.CollectionInterval = duration
+		}
+	}
+
+	if val := os.Getenv("SC_INGESTOR_ENDPOINT"); val != "" {
+		c.IngestorEndpoint = val
+	}
+
+	if val := os.Getenv("SC_HTTP_TIMEOUT"); val != "" {
+		if duration, err := time.ParseDuration(val); err == nil {
+			c.HTTPTimeout = duration
+		}
+	}
+
+	if val := os.Getenv("SC_VM_ID"); val != "" {
+		c.VMID = val
+	}
+
+	if val := os.Getenv("SC_LOG_LEVEL"); val != "" {
+		c.LogLevel = val
+	}
+
+	if val := os.Getenv("SC_MAX_RETRIES"); val != "" {
+		if retries, err := strconv.Atoi(val); err == nil {
+			c.MaxRetries = retries
+		}
+	}
+
+	if val := os.Getenv("SC_RETRY_INTERVAL"); val != "" {
+		if duration, err := time.ParseDuration(val); err == nil {
+			c.RetryInterval = duration
+		}
+	}
+
+	// Load labels from SC_LABELS (format: key1=value1,key2=value2)
+	if val := os.Getenv("SC_LABELS"); val != "" {
+		labels := parseLabels(val)
+		for k, v := range labels {
+			c.Labels[k] = v
+		}
+	}
+
+	// Load collector settings
+	loadCollectorEnvVars(&c.Collectors)
+}
+
+// loadCollectorEnvVars loads collector configuration from environment variables
+func loadCollectorEnvVars(collectors *CollectorConfig) {
+	if val := os.Getenv("SC_COLLECTOR_PROCESSES"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Processes = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_CPU"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.CPU = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_CPU_FREQ"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.CPUFreq = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_LOADAVG"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.LoadAvg = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_MEMORY"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Memory = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_VMSTAT"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.VMStat = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_DISK"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Disk = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_DISKSTATS"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.DiskStats = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_FILESYSTEM"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Filesystem = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_NETWORK"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Network = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_NETDEV"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.NetDev = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_NETSTAT"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.NetStat = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_SOCKSTAT"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Sockstat = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_UNAME"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Uname = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_TIME"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Time = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_UPTIME"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Uptime = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_ENTROPY"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Entropy = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_INTERRUPTS"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Interrupts = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_THERMAL"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Thermal = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_PRESSURE"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Pressure = enabled
+		}
+	}
+	if val := os.Getenv("SC_COLLECTOR_SCHEDSTAT"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			collectors.Schedstat = enabled
+		}
+	}
+}
+
+// parseLabels parses label string in format "key1=value1,key2=value2"
+func parseLabels(labelStr string) map[string]string {
+	labels := make(map[string]string)
+	pairs := strings.Split(labelStr, ",")
+
+	for _, pair := range pairs {
+		parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			value := strings.TrimSpace(parts[1])
+			if key != "" {
+				labels[key] = value
+			}
+		}
+	}
+
+	return labels
+}
+
+// validate checks if the configuration is valid
+func (c *Config) validate() error {
+	if c.CollectionInterval <= 0 {
+		return fmt.Errorf("collection_interval must be positive")
+	}
+
+	if c.HTTPTimeout <= 0 {
+		return fmt.Errorf("http_timeout must be positive")
+	}
+
+	if c.IngestorEndpoint == "" {
+		return fmt.Errorf("ingestor_endpoint cannot be empty")
+	}
+
+	if c.VMID == "" {
+		return fmt.Errorf("vm_id cannot be empty")
+	}
+
+	if c.MaxRetries < 0 {
+		return fmt.Errorf("max_retries cannot be negative")
+	}
+
+	if c.RetryInterval <= 0 {
+		return fmt.Errorf("retry_interval must be positive")
+	}
+
+	// Validate log level
+	validLogLevels := []string{"debug", "info", "warn", "error", "fatal", "panic"}
+	validLevel := false
+	for _, level := range validLogLevels {
+		if strings.ToLower(c.LogLevel) == level {
+			validLevel = true
+			break
+		}
+	}
+	if !validLevel {
+		return fmt.Errorf("invalid log_level: %s", c.LogLevel)
+	}
+
+	// Validate at least one collector is enabled
+	if !c.hasEnabledCollectors() {
+		return fmt.Errorf("at least one collector must be enabled")
+	}
+
+	return nil
+}
+
+// hasEnabledCollectors checks if at least one collector is enabled
+func (c *Config) hasEnabledCollectors() bool {
+	collectors := c.Collectors
+	return collectors.Processes || collectors.CPU || collectors.CPUFreq || collectors.LoadAvg ||
+		collectors.Memory || collectors.VMStat || collectors.Disk || collectors.DiskStats ||
+		collectors.Filesystem || collectors.Network || collectors.NetDev || collectors.NetStat ||
+		collectors.Sockstat || collectors.Uname || collectors.Time || collectors.Uptime ||
+		collectors.Entropy || collectors.Interrupts || collectors.Thermal || collectors.Pressure ||
+		collectors.Schedstat
+}
+
+// String returns a string representation of the config (excluding sensitive data)
+func (c *Config) String() string {
+	return fmt.Sprintf("Config{CollectionInterval:%v, IngestorEndpoint:%s, VMID:%s, LogLevel:%s, Collectors:%+v}",
+		c.CollectionInterval, c.IngestorEndpoint, c.VMID, c.LogLevel, c.Collectors)
+}
