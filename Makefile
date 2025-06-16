@@ -3,7 +3,7 @@
 .PHONY: all build test clean install lint fmt vet run deps help release docker
 
 # Build variables
-BINARY_NAME=sc-agent
+BINARY_NAME=sc-metrics-agent
 BUILD_DIR=build
 MAIN_PATH=./cmd/agent
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
