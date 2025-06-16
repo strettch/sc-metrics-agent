@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+
+# It's good practice to keep this to ensure modules are on.
+export GO111MODULE=on
+
+%:
+	dh $@ --with golang
+
+# Override the build step to call 'make build' directly.
+# This skips the default 'all' target, which includes 'deps'.
+# The Go compiler will automatically use the included 'vendor' directory.
+override_dh_auto_build:
+	make build

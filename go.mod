@@ -1,6 +1,8 @@
 module github.com/strettch/sc-metrics-agent
 
-go 1.24.3
+go 1.23.0
+
+toolchain go1.23.10
 
 require (
 	github.com/klauspost/compress v1.17.9

@@ -1,0 +1,20 @@
+Source: sc-metrics-agent
+Section: utils
+Priority: optional
+Maintainer: strettch <engineering@strettch.com>
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13),
+ dh-golang,
+ golang-any
+Standards-Version: 4.6.2
+Homepage: https://github.com/strettch/sc-metrics-agent
+Go-Import-Path: github.com/strettch/sc-metrics-agent
+
+Package: sc-metrics-agent
+Architecture: any
+Multi-Arch: foreign
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Description: An agent for collecting VM-level system metrics for compute monitoring feature on strettch cloud.

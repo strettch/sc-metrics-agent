@@ -1,0 +1,35 @@
+sc-metrics-agent (0.1.0-1ubuntu5) noble; urgency=medium
+
+  * Final build fix: Skip 'deps' target and use vendored modules.
+
+ -- strettch <engineering@strettch.com>  Mon, 16 Jun 2025 14:03:02 +0000
+
+sc-metrics-agent (0.1.0-1ubuntu4) noble; urgency=medium
+
+  * Vendor dependencies to ensure build reproducibility.
+
+ -- strettch <engineering@strettch.com>  Mon, 16 Jun 2025 13:52:16 +0000
+
+sc-metrics-agent (0.1.0-1ubuntu3) noble; urgency=medium
+
+  * Force Go modules on for build.
+
+ -- strettch <engineering@strettch.com>  Mon, 16 Jun 2025 13:45:32 +0000
+
+sc-metrics-agent (0.1.0-1ubuntu2) noble; urgency=medium
+
+  * Add missing Go build dependencies.
+
+ -- strettch <engineering@strettch.com>  Mon, 16 Jun 2025 13:37:51 +0000
+
+sc-metrics-agent (0.1.0-1ubuntu1) noble; urgency=medium
+
+  * Add missing Go build dependencies.
+
+ -- strettch <engineering@strettch.com>  Mon, 16 Jun 2025 13:37:41 +0000
+
+sc-metrics-agent (0.1.0-1) noble; urgency=medium
+
+  * Initial release for PPA.
+
+ -- strettch <engineering@strettch.com>  Mon, 16 Jun 2025 13:20:58 +0000
