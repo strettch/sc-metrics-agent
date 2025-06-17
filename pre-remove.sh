@@ -1,4 +1,4 @@
 #!/bin/sh
-echo "Stopping and disabling sc-agent..."
-systemctl stop sc-agent.service
-systemctl disable sc-agent.service
+echo "Stopping and disabling sc-metrics-agent..."
+systemctl stop sc-metrics-agent.service
+systemctl disable sc-metrics-agent.service
