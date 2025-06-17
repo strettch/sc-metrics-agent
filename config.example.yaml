@@ -1,15 +1,15 @@
-# SC Metrics Agent Configuration Example
+# SC Metrics Agent Configuration
 # Copy this file to config.yaml and customize for your environment
 
 # Collection settings
-collection_interval: 30s  # How often to collect and send metrics
-http_timeout: 30s         # HTTP request timeout for sending metrics
+collection_interval: 30s
+http_timeout: 30s
 
 # Ingestor endpoint configuration
-ingestor_endpoint: "http://10.0.0.3:8080/resource-manager/api/v1/metrics/ingest"  # URL of the metrics ingestor service
+ingestor_endpoint: "https://api.cloud.strettch.dev/resource-manager/api/v1/metrics/ingest"
 
-# Agent identification - VM ID will be automatically detected from dmidecode if not specified
-vm_id: ""  # Leave empty to auto-detect from dmidecode -s system-uuid
+# Agent identification - VM ID will be automatically detected if not specified
+vm_id: ""
 
 # Additional labels to attach to all metrics
 labels:
@@ -17,112 +17,45 @@ labels:
   region: "us-east-1"
   team: "platform"
   service: "web-frontend"
-  datacenter: "dc1"
 
-# Comprehensive collector configuration - specify which metrics to collect
+# Collectors configuration - specify which metrics to collect
 collectors:
-  # Process metrics (required for original user story)
-  processes: true           # Process and thread counts by state, PID limits
-  
-  # CPU metrics
-  cpu: true                 # CPU time spent in each mode (user, system, idle, etc.)
-  cpu_freq: true           # CPU frequency information
-  loadavg: true            # System load averages (1m, 5m, 15m)
+  # Process and system metrics
+  processes: true
+  cpu: true
+  cpu_freq: true
+  loadavg: true
   
   # Memory metrics  
-  memory: true             # Memory usage (total, free, available, buffers, cache, swap)
-  vmstat: true             # Virtual memory statistics (page in/out, swap in/out)
+  memory: true
+  vmstat: true
   
   # Storage metrics
-  disk: true               # Disk I/O statistics (reads, writes, bytes, time)
-  diskstats: true          # Detailed disk statistics from /proc/diskstats
-  filesystem: true         # Filesystem usage (size, free, used, inodes)
+  disk: true
+  diskstats: true
+  filesystem: true
   
   # Network metrics
-  network: true            # Network interface statistics (bytes, packets, errors, drops)
-  netdev: true             # Network device statistics from /proc/net/dev
-  netstat: true            # Network connection statistics by protocol and state
-  sockstat: true           # Socket statistics from /proc/net/sockstat
+  network: true
+  netdev: true
+  netstat: true
+  sockstat: true
   
-  # System information metrics
-  uname: true              # System information (OS, kernel version, architecture)
-  time: true               # System time and timezone information
-  uptime: true             # System uptime and boot time
-  entropy: true            # Available entropy from /proc/sys/kernel/random/entropy_avail
-  interrupts: true         # Interrupt statistics from /proc/interrupts
+  # System information
+  uname: true
+  time: true
+  uptime: true
+  entropy: true
+  interrupts: true
   
-  # Advanced system metrics
-  thermal: true            # Thermal zone temperatures from /sys/class/thermal
-  pressure: true           # Pressure stall information (CPU, memory, I/O)
-  schedstat: true          # Scheduler statistics from /proc/schedstat
+  # Advanced metrics
+  thermal: true
+  pressure: true
+  schedstat: true
 
 # Logging configuration
-log_level: "info"         # Options: debug, info, warn, error, fatal, panic
+log_level: "info"
 
-# Retry and resilience settings
-max_retries: 3           # Maximum number of retry attempts for failed requests
-retry_interval: 5s       # Base delay between retry attempts
-
-# Environment variable overrides (set these in your environment):
-# 
-# Basic settings:
-# SC_COLLECTION_INTERVAL=60s
-# SC_INGESTOR_ENDPOINT=https://metrics.example.com/ingest
-# SC_VM_ID=my-unique-vm-id
-# SC_LOG_LEVEL=debug
-# SC_LABELS=env=prod,region=us-west-2,team=devops
-# SC_MAX_RETRIES=5
-# SC_RETRY_INTERVAL=10s
-#
-# Collector toggles:
-# SC_COLLECTOR_PROCESSES=true
-# SC_COLLECTOR_CPU=true
-# SC_COLLECTOR_CPU_FREQ=true
-# SC_COLLECTOR_LOADAVG=true
-# SC_COLLECTOR_MEMORY=true
-# SC_COLLECTOR_VMSTAT=true
-# SC_COLLECTOR_DISK=true
-# SC_COLLECTOR_DISKSTATS=true
-# SC_COLLECTOR_FILESYSTEM=true
-# SC_COLLECTOR_NETWORK=true
-# SC_COLLECTOR_NETDEV=true
-# SC_COLLECTOR_NETSTAT=true
-# SC_COLLECTOR_SOCKSTAT=true
-# SC_COLLECTOR_UNAME=true
-# SC_COLLECTOR_TIME=true
-# SC_COLLECTOR_UPTIME=true
-# SC_COLLECTOR_ENTROPY=true
-# SC_COLLECTOR_INTERRUPTS=true
-# SC_COLLECTOR_THERMAL=true
-# SC_COLLECTOR_PRESSURE=true
-# SC_COLLECTOR_SCHEDSTAT=true
-
-# Production deployment examples:
-#
-# High-frequency monitoring (every 10 seconds):
-# collection_interval: 10s
-# 
-# Minimal resource usage (disable heavy collectors):
-# collectors:
-#   processes: true
-#   cpu: true
-#   memory: true
-#   loadavg: true
-#   # Disable disk, network, and advanced metrics
-#   disk: false
-#   diskstats: false
-#   filesystem: false
-#   network: false
-#   netdev: false
-#   netstat: false
-#   sockstat: false
-#   thermal: false
-#   pressure: false
-#   schedstat: false
-#
-# Container deployment:
-# vm_id: "${HOSTNAME}-${POD_NAME}"
-# labels:
-#   container_name: "${CONTAINER_NAME}"
-#   pod_name: "${POD_NAME}"
-#   namespace: "${NAMESPACE}"
+# Retry settings
+max_retries: 3
+retry_interval: 5s

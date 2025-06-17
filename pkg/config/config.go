@@ -76,17 +76,11 @@ type CollectorConfig struct {
 // DefaultConfig returns a configuration with sensible defaults
 func DefaultConfig() *Config {
 	vmID := getVMIDFromDMIDecode()
-	if vmID == "" {
-		hostname, _ := os.Hostname()
-		if hostname == "" {
-			hostname = "unknown"
-		}
-		vmID = hostname
-	}
+	// If empty, it will be caught in validation
 
 	return &Config{
 		CollectionInterval: 30 * time.Second,
-		IngestorEndpoint:   "http://10.0.0.3:8080/resource-manager/api/v1/metrics/ingest",
+		IngestorEndpoint:   "https://api.cloud.strettch.dev/resource-manager/api/v1/metrics/ingest",
 		HTTPTimeout:        30 * time.Second,
 		VMID:               vmID,
 		Labels:             make(map[string]string),
@@ -386,7 +380,7 @@ func (c *Config) validate() error {
 	}
 
 	if c.VMID == "" {
-		return fmt.Errorf("vm_id cannot be empty")
+		return fmt.Errorf("vm_id cannot be determined: dmidecode failed, /etc/machine-id unavailable, /proc/sys/kernel/random/boot_id unavailable, and hostname unavailable. Please set vm_id manually in config or SC_VM_ID environment variable")
 	}
 
 	if c.MaxRetries < 0 {

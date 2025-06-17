@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,7 +27,15 @@ func main() {
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Fatal("Failed to load configuration", zap.Error(err))
+		if strings.Contains(err.Error(), "vm_id cannot be determined") {
+			logger.Fatal("Failed to load configuration - VM ID detection failed",
+				zap.Error(err),
+				zap.String("help", "Ensure dmidecode is installed and accessible, or set vm_id manually in config.yaml or SC_VM_ID environment variable"),
+				zap.String("dmidecode_check", "Run 'dmidecode -s system-uuid' to test VM ID detection"),
+			)
+		} else {
+			logger.Fatal("Failed to load configuration", zap.Error(err))
+		}
 	}
 
 	// Update log level from config
@@ -60,7 +69,13 @@ func main() {
 	aggregator := aggregate.NewAggregator(logger)
 	
 	// Create HTTP client for metric writing
-	httpClient := tsclient.NewClient(cfg.IngestorEndpoint, cfg.HTTPTimeout, logger)
+	clientConfig := tsclient.ClientConfig{
+		Endpoint:   cfg.IngestorEndpoint,
+		Timeout:    cfg.HTTPTimeout,
+		MaxRetries: cfg.MaxRetries,
+		RetryDelay: cfg.RetryInterval,
+	}
+	httpClient := tsclient.NewClientWithConfig(clientConfig, logger)
 	metricWriter := tsclient.NewMetricWriter(httpClient, logger)
 
 	// Create processing pipeline
