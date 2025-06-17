@@ -1,0 +1,18 @@
+[Unit]
+Description=SC Metrics Agent
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/local/bin/sc-metrics-agent
+Environment=SC_AGENT_CONFIG=/etc/sc-metrics-agent/config.yaml
+Restart=always
+RestartSec=5
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
