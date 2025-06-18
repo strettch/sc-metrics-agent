@@ -13,8 +13,16 @@ elif [ -n "$1" ]; then
   exit 1
 fi
 
-# Get the latest tag
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+# Ensure the current branch is up-to-date and fetch all tags robustly
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "Pulling latest changes for branch $CURRENT_BRANCH..."
+git pull origin "$CURRENT_BRANCH" --ff-only || echo "Failed to pull or branch is up-to-date/diverged (ff-only). Continuing..."
+
+echo "Fetching all tags from remote (pruning old, forcing update)..."
+git fetch origin --prune --tags --force
+
+# Get the latest tag by listing all semantic version tags, sorting them, and taking the last one
+LATEST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 2>/dev/null || echo "v0.0.0")
 
 # Remove 'v' prefix if it exists
 CURRENT_VERSION=${LATEST_TAG#v}
@@ -53,10 +61,27 @@ fi
 
 # Create and push the new tag
 GIT_COMMIT=$(git rev-parse HEAD)
-echo "Tagging commit ${GIT_COMMIT} as ${NEW_VERSION}"
-git tag -a "${NEW_VERSION}" -m "Release ${NEW_VERSION}"
+echo "Attempting to delete local tag $NEW_VERSION (if it exists)..."
+git tag -d "$NEW_VERSION" >/dev/null 2>&1 || true
 
-echo "Pushing tag ${NEW_VERSION} to remote..."
-git push origin "${NEW_VERSION}"
+echo "Attempting to delete remote tag $NEW_VERSION (if it exists)..."
+git push origin --delete "$NEW_VERSION" >/dev/null 2>&1 || true
+
+# Fetch again after delete attempts to ensure local ref state is current
+echo "Re-fetching tags from remote to synchronize after potential deletions..."
+git fetch origin --prune --tags --force
+
+GIT_COMMIT_HASH=$(git rev-parse HEAD)
+echo "Force tagging commit $GIT_COMMIT_HASH as $NEW_VERSION"
+git tag -f -a "${NEW_VERSION}" -m "Release ${NEW_VERSION}" "$GIT_COMMIT_HASH"
+
+echo "Force pushing tag $NEW_VERSION (refs/tags/${NEW_VERSION}) to origin..."
+git push origin --force "refs/tags/${NEW_VERSION}"
+
+# The original non-force push is now redundant due to the force push above.
+# If a non-force push is desired as a fallback or for other reasons, it should be conditional.
+# For now, we'll assume the force push is the primary intent for ensuring the tag is on the remote.
+# echo "Pushing tag ${NEW_VERSION} to remote..."
+# git push origin "${NEW_VERSION}"
 
 echo "✅ Successfully created and pushed tag ${NEW_VERSION}."
