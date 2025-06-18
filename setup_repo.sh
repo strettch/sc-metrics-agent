@@ -5,7 +5,7 @@ set -e
 ORG_NAME="strettch"
 GPG_EMAIL="engineering@strettch.com"
 PACKAGE_NAME="sc-metrics-agent"
-PACKAGE_VERSION="1.1.6" # Increment this for new versions
+PACKAGE_VERSION=$(git describe --tags --always --dirty) # Version is sourced from git tag
 REPO_DOMAIN="repo.cloud.strettch.dev"
 DISTRIBUTIONS="focal jammy noble" # Use spaces for loop iteration
 # The standard, public-facing directory for the repository files.
@@ -53,14 +53,14 @@ sudo aptly db cleanup
 sudo aptly repo remove sc-metrics-agent-repo ${PACKAGE_NAME} || echo "No package to remove from repo. Continuing."
 rm -f ${PACKAGE_NAME}_*.deb
 
-echo "--- [Step 2/7] Building Go binary..."
-GOOS=linux GOARCH=amd64 go build -o ${PACKAGE_NAME} ./cmd/agent/main.go
+echo "--- [Step 2/7] Building Go binary via Makefile..."
+make GOOS=linux GOARCH=amd64 build
 
 echo "--- [Step 3/7] Preparing packaging assets..."
 STAGING_DIR="/tmp/${PACKAGE_NAME}-build"
 rm -rf "${STAGING_DIR}"
 mkdir -p "${STAGING_DIR}/usr/local/bin" "${STAGING_DIR}/etc/${PACKAGE_NAME}" "${STAGING_DIR}/etc/systemd/system"
-cp ${PACKAGE_NAME} "${STAGING_DIR}/usr/local/bin/"
+cp build/${PACKAGE_NAME} "${STAGING_DIR}/usr/local/bin/"
 cp config.example.yaml "${STAGING_DIR}/etc/${PACKAGE_NAME}/config.yaml"
 cp "${SERVICE_FILE}" "${STAGING_DIR}/etc/systemd/system/"
 chmod +x "${POSTINSTALL_SCRIPT}" "${PREREMOVE_SCRIPT}"
@@ -80,7 +80,7 @@ if ! sudo aptly repo show sc-metrics-agent-repo > /dev/null 2>&1; then
     FIRST_DIST=$(echo ${DISTRIBUTIONS} | cut -d' ' -f1)
     sudo aptly repo create -distribution="${FIRST_DIST}" -component="main" sc-metrics-agent-repo
 fi
-sudo aptly repo add sc-metrics-agent-repo ${PACKAGE_NAME}_${PACKAGE_VERSION}_amd64.deb
+sudo aptly repo add sc-metrics-agent-repo ${PACKAGE_NAME}_${PACKAGE_VERSION#v}_amd64.deb
 SNAPSHOT_NAME="${PACKAGE_NAME}-${PACKAGE_VERSION}"
 sudo aptly snapshot create "${SNAPSHOT_NAME}" from repo sc-metrics-agent-repo
 

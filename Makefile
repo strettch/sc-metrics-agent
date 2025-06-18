@@ -6,7 +6,7 @@
 BINARY_NAME=sc-metrics-agent
 BUILD_DIR=build
 MAIN_PATH=./cmd/agent
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION := $(shell git describe --tags --always --dirty)
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 
@@ -196,6 +196,19 @@ docker-run: docker
 		-e SC_LOG_LEVEL=debug \
 		-e SC_INGESTOR_ENDPOINT=http://host.docker.internal:8080/ingest \
 		sc-metrics-agent:$(VERSION)
+
+# Release tagging scripts
+release-patch:
+	@echo "Creating patch release..."
+	@./packaging/scripts/release.sh patch
+
+release-minor:
+	@echo "Creating minor release..."
+	@./packaging/scripts/release.sh minor
+
+release-major:
+	@echo "Creating major release..."
+	@./packaging/scripts/release.sh major
 
 # Development setup
 dev-setup:

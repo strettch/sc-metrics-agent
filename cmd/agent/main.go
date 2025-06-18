@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -9,17 +10,31 @@ import (
 	"syscall"
 	"time"
 
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
 	"github.com/strettch/sc-metrics-agent/pkg/clients/tsclient"
 	"github.com/strettch/sc-metrics-agent/pkg/collector"
 	"github.com/strettch/sc-metrics-agent/pkg/config"
 	"github.com/strettch/sc-metrics-agent/pkg/decorator"
 	"github.com/strettch/sc-metrics-agent/pkg/pipeline"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+// These variables are set via linker flags during the build process (see Makefile)
+var (
+	version   = "dev" // Default value if not set by LDFLAGS
+	commit    = "unknown"
+	buildTime = "unknown"
 )
 
 func main() {
+	versionFlag := flag.Bool("v", false, "Print version and exit")
+	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("Version: %s\nCommit: %s\nBuildTime: %s\n", version, commit, buildTime)
+		os.Exit(0)
+	}
 	// Initialize logger
 	logger := initLogger("info")
 	defer logger.Sync()

@@ -1,7 +1,9 @@
 package config
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -128,30 +130,31 @@ func DefaultConfig() *Config {
 
 // getVMIDFromDMIDecode attempts to get VM ID from dmidecode
 func getVMIDFromDMIDecode() string {
-	// Try dmidecode first
-	cmd := exec.Command("dmidecode", "-s", "system-uuid")
+	// Try dmidecode first. This is the primary method.
+	// Set a timeout for the command to prevent indefinite hangs.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "dmidecode", "-s", "system-uuid")
 	output, err := cmd.Output()
-	if err == nil {
-		vmID := strings.TrimSpace(string(output))
-		if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" {
-			return vmID
-		}
+
+	if ctx.Err() == context.DeadlineExceeded {
+		log.Printf("Error getting VM ID: dmidecode command timed out")
+		return ""
 	}
 
-	// Fallback to machine-id
-	if machineID, err := os.ReadFile("/etc/machine-id"); err == nil {
-		if id := strings.TrimSpace(string(machineID)); id != "" {
-			return id
-		}
+	if err != nil {
+		log.Printf("Error getting VM ID: dmidecode command failed: %v. Output: %s", err, string(output))
+		return ""
 	}
 
-	// Fallback to boot-id
-	if bootID, err := os.ReadFile("/proc/sys/kernel/random/boot_id"); err == nil {
-		if id := strings.TrimSpace(string(bootID)); id != "" {
-			return id
-		}
+	vmID := strings.TrimSpace(string(output))
+	// Check for common invalid or unset dmidecode outputs
+	if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" && !strings.HasPrefix(vmID, "00000000-0000-0000") {
+		return vmID
 	}
 
+	log.Printf("Warning: dmidecode returned an invalid or empty VM ID: '%s'", vmID)
 	return ""
 }
 
