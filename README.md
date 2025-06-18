@@ -1,23 +1,26 @@
 # SC Metrics Agent
 
-A comprehensive, production-ready agent for collecting VM-level system metrics and transmitting them to a central ingestor service. Built with Go and designed for reliability, performance, and complete observability.
+[![Go Report Card](https://goreportcard.com/badge/github.com/strettch/sc-metrics-agent)](https://goreportcard.com/report/github.com/strettch/sc-metrics-agent)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+SC Metrics Agent is a comprehensive, production-ready agent for collecting VM-level system metrics and transmitting them to a central ingestor service. Built with Go, it's designed for reliability, performance, and complete observability.
 
 ## Overview
 
-The SC Metrics Agent implements a **Collect → Decorate → Aggregate → Write** pipeline to gather comprehensive system metrics from VMs using Prometheus collectors and gopsutil, then transmit them to a configurable HTTP endpoint with Snappy compression.
+The SC Metrics Agent implements a **Collect → Decorate → Aggregate → Write** pipeline. It gathers a wide array of system metrics from VMs using Prometheus collectors and gopsutil, then transmits them to a configurable HTTP endpoint with Snappy compression for efficiency.
 
-### Key Features
+## Key Features
 
-- **Comprehensive metrics collection** including processes, CPU, memory, network, storage, load averages, and system information
-- **Automatic VM identification** using `dmidecode -s system-uuid` with intelligent fallbacks
-- **High-performance logging** with structured JSON output using Zap logger
-- **Advanced compression** using klauspost/compress/snappy for optimal efficiency
-- **Payload transparency** with pre-compression logging for debugging and monitoring
-- **Configurable collectors** with granular enable/disable control
-- **Resilient HTTP client** with retry logic and rate limiting
-- **Diagnostic reporting** for agent health monitoring
-- **Graceful shutdown** with final diagnostics transmission
-- **Container-ready** with Docker support and environment variable configuration
+-   **Comprehensive Metrics Collection**: Gathers data on processes, CPU, memory, network, storage, load averages, and system information.
+-   **Automatic VM Identification**: Uses `dmidecode -s system-uuid` with intelligent fallbacks to `/etc/machine-id`, `/proc/sys/kernel/random/boot_id`, and hostname.
+-   **High-Performance Logging**: Structured JSON output using [Zap logger](https://github.com/uber-go/zap) for efficient and parseable logs.
+-   **Advanced Compression**: Utilizes [klauspost/compress/snappy](https://github.com/klauspost/compress) for optimal data transmission efficiency.
+-   **Payload Transparency**: Logs pre-compression payloads for easier debugging and monitoring.
+-   **Configurable Collectors**: Granular control to enable or disable specific metric collectors.
+-   **Resilient HTTP Client**: Includes retry logic and rate limiting for robust data delivery.
+-   **Diagnostic Reporting**: Provides agent health monitoring capabilities.
+-   **Graceful Shutdown**: Ensures final diagnostics are transmitted before exiting.
+-   **Container-Ready**: Supports Docker and configuration via environment variables.
 
 ## Architecture
 
@@ -31,678 +34,229 @@ The agent follows a modular pipeline architecture:
 
 ### Components
 
-1. **Collector**: Gathers comprehensive system metrics using gopsutil and procfs
-2. **Decorator**: Adds VM ID and custom labels to all metrics
-3. **Aggregator**: Converts Prometheus metrics to internal format for transmission
-4. **Writer**: Sends compressed metric batches via HTTP POST with retry logic
+1.  **Collector**: Gathers system metrics using gopsutil and procfs.
+2.  **Decorator**: Enriches metrics with VM ID and custom labels.
+3.  **Aggregator**: Converts Prometheus metrics into an internal format for transmission.
+4.  **Writer**: Sends compressed metric batches via HTTP POST, complete with retry logic.
 
 ### Data Flow
 
-1. **Collection**: System metrics collected from multiple sources (procfs, sysfs, gopsutil)
-2. **Decoration**: VM identifier and custom labels are added to each metric
-3. **Aggregation**: Metrics are converted to `MetricWithValue` structs and sorted
-4. **Transmission**: Data is JSON-serialized, Snappy-compressed, and sent via HTTP
-
-## Comprehensive Metrics Collected
-
-### Process Metrics
-- **node_processes_pids**: Total number of process IDs
-- **node_processes_state**: Process count by state (running, sleeping, etc.)
-- **node_processes_threads**: Total thread count across all processes
-- **node_processes_threads_state**: Thread count by state
-- **node_processes_max_processes**: System PID limit from kernel
-- **node_processes_max_threads**: System thread limit from kernel
-
-### CPU Metrics
-- **node_cpu_seconds_total**: CPU time spent in each mode (user, system, idle, iowait, etc.)
-- **node_cpu_frequency_hertz**: Current CPU frequency for each core
-- **node_context_switches_total**: Total context switches
-- **node_intr_total**: Total interrupts serviced
-- **node_softirqs_total**: Total software interrupts
-
-### Memory Metrics
-- **node_memory_MemTotal_bytes**: Total system memory
-- **node_memory_MemFree_bytes**: Free memory available
-- **node_memory_MemAvailable_bytes**: Available memory for new processes
-- **node_memory_MemUsed_bytes**: Used memory
-- **node_memory_Buffers_bytes**: Buffer cache memory
-- **node_memory_Cached_bytes**: Page cache memory
-- **node_memory_SwapTotal_bytes**: Total swap space
-- **node_memory_SwapFree_bytes**: Free swap space
-- **node_memory_SwapUsed_bytes**: Used swap space
-
-### Virtual Memory Statistics
-- **node_vmstat_pgpgin**: Pages read from disk
-- **node_vmstat_pgpgout**: Pages written to disk  
-- **node_vmstat_pswpin**: Swap pages read
-- **node_vmstat_pswpout**: Swap pages written
-
-### Storage Metrics
-- **node_disk_reads_completed_total**: Completed disk reads
-- **node_disk_writes_completed_total**: Completed disk writes
-- **node_disk_read_bytes_total**: Bytes read from disk
-- **node_disk_written_bytes_total**: Bytes written to disk
-- **node_disk_read_time_seconds_total**: Time spent reading
-- **node_disk_write_time_seconds_total**: Time spent writing
-
-### Filesystem Metrics
-- **node_filesystem_size_bytes**: Total filesystem size
-- **node_filesystem_free_bytes**: Free space available
-- **node_filesystem_used_bytes**: Space currently used
-- **node_filesystem_files**: Total inodes available
-- **node_filesystem_files_free**: Free inodes available
-
-### Network Metrics
-- **node_network_receive_bytes_total**: Bytes received per interface
-- **node_network_transmit_bytes_total**: Bytes transmitted per interface
-- **node_network_receive_packets_total**: Packets received per interface
-- **node_network_transmit_packets_total**: Packets transmitted per interface
-- **node_network_receive_errs_total**: Receive errors per interface
-- **node_network_transmit_errs_total**: Transmit errors per interface
-- **node_network_receive_drop_total**: Dropped received packets
-- **node_network_transmit_drop_total**: Dropped transmitted packets
-
-### Network Connection Metrics
-- **node_netstat_connections**: Active connections by protocol and state
-- **node_sockstat_sockets_used**: Sockets in use by protocol
-
-### System Information Metrics
-- **node_load1**: 1-minute load average
-- **node_load5**: 5-minute load average
-- **node_load15**: 15-minute load average
-- **node_boot_time_seconds**: System boot time
-- **node_time_seconds**: Current system time
-- **node_uptime_seconds**: System uptime
-- **node_entropy_available_bits**: Available entropy
-
-### Advanced Metrics
-- **node_thermal_zone_temp**: Temperature readings from thermal zones
-- **node_pressure_cpu_waiting_seconds_total**: CPU pressure stall information
-- **node_pressure_memory_waiting_seconds_total**: Memory pressure stall information
-- **node_pressure_io_waiting_seconds_total**: I/O pressure stall information
+1.  **Collection**: Metrics are gathered from various system sources (procfs, sysfs, gopsutil).
+2.  **Decoration**: A unique VM identifier and any custom-defined labels are added to each metric.
+3.  **Aggregation**: Metrics are transformed into `MetricWithValue` structs and sorted for consistency.
+4.  **Transmission**: Data is serialized to JSON, compressed using Snappy, and then sent via HTTP POST to the configured ingestor.
 
 ## Installation
 
 ### Prerequisites
 
-- Go 1.24.3 or later
-- Linux system (recommended for full metric collection)
-- Network connectivity to ingestor endpoint
-- Root privileges (recommended for complete system access)
+-   Go (version 1.20 or later recommended)
+-   A Linux system (for full metric collection capabilities)
+-   Network connectivity to the metrics ingestor endpoint
+-   Root privileges (recommended for complete system access and `dmidecode`)
+
+### Quick Install Script (Linux)
+
+For a fast installation on Linux systems, you can use the following command:
+
+```bash
+curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash
+```
+
+This script will download and install the latest version of the agent and set it up as a systemd service.
 
 ### Build from Source
 
 ```bash
 git clone https://github.com/strettch/sc-metrics-agent.git
 cd sc-metrics-agent
-go mod download
+go mod tidy # or go mod download
 make build
 ```
 
-### Quick Start
+This will produce an executable binary in the `build/` directory (e.g., `build/sc-agent`).
 
-```bash
-# Build and run with default configuration
-make build
-sudo ./build/sc-agent
+### Systemd Service Setup (Recommended)
 
-# Run with custom configuration
-sudo SC_AGENT_CONFIG=/etc/sc-agent/config.yaml ./build/sc-agent
+For production deployments, running the agent as a systemd service is recommended.
 
-# Run with environment variables
-sudo SC_INGESTOR_ENDPOINT=https://metrics.company.com/ingest \
-     SC_VM_ID=web-server-prod-01 \
-     SC_LOG_LEVEL=debug \
-     ./build/sc-agent
-```
+1.  **Copy the binary** to a standard location:
+    ```bash
+    sudo cp ./build/sc-agent /usr/local/bin/sc-metrics-agent
+    ```
+2.  **Create the configuration directory and file**:
+    ```bash
+    sudo mkdir -p /etc/sc-metrics-agent
+    sudo cp config.example.yaml /etc/sc-metrics-agent/config.yaml
+    # Edit /etc/sc-metrics-agent/config.yaml as needed
+    ```
+3.  **Copy the systemd service file**:
+    ```bash
+    sudo cp packaging/systemd/sc-metrics-agent.service /etc/systemd/system/
+    ```
+4.  **Reload systemd, enable, and start the service**:
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable sc-metrics-agent.service
+    sudo systemctl start sc-metrics-agent.service
+    ```
+5.  **Check the status**:
+    ```bash
+    sudo systemctl status sc-metrics-agent.service
+    sudo journalctl -u sc-metrics-agent.service -f
+    ```
 
 ## Configuration
 
-### Automatic VM ID Detection
-
-The agent automatically detects VM ID using:
-1. `dmidecode -s system-uuid` (primary method)
-2. `/etc/machine-id` (fallback)
-3. `/proc/sys/kernel/random/boot_id` (fallback)
-4. Hostname (final fallback)
+The agent can be configured via a YAML file or environment variables. Environment variables override YAML settings.
 
 ### Configuration File
 
-Create `config.yaml` from the example:
+By default, the agent looks for `config.yaml` in the current directory or at `/etc/sc-metrics-agent/config.yaml` (when run as a service). An example configuration is provided in `config.example.yaml`.
 
-```bash
-cp config.example.yaml config.yaml
-```
+Key configuration options:
 
-Example configuration:
-
-```yaml
-collection_interval: 30s
-ingestor_endpoint: "https://metrics.company.com/ingest"
-vm_id: ""  # Leave empty for auto-detection
-
-labels:
-  environment: "production"
-  region: "us-east-1"
-  team: "platform"
-
-collectors:
-  # Process metrics (required)
-  processes: true
-  
-  # CPU and load metrics
-  cpu: true
-  cpu_freq: true
-  loadavg: true
-  
-  # Memory metrics
-  memory: true
-  vmstat: true
-  
-  # Storage metrics
-  disk: true
-  diskstats: true
-  filesystem: true
-  
-  # Network metrics
-  network: true
-  netdev: true
-  netstat: true
-  sockstat: true
-  
-  # System metrics
-  uname: true
-  time: true
-  uptime: true
-  entropy: true
-  interrupts: true
-  
-  # Advanced metrics
-  thermal: true
-  pressure: true
-  schedstat: true
-
-log_level: "info"
-max_retries: 3
-retry_interval: 5s
-```
+-   `collection_interval`: How often to collect metrics (e.g., `30s`).
+-   `ingestor_endpoint`: The URL of your metrics ingestor.
+-   `vm_id`: (Optional) Manually set the VM ID. If empty, the agent attempts auto-detection.
+-   `labels`: Custom key-value pairs to add to all metrics.
+-   `collectors`: A map to enable/disable specific metric groups (e.g., `cpu: true`).
+-   `log_level`: Logging verbosity (`debug`, `info`, `warn`, `error`, `fatal`).
 
 ### Environment Variables
 
-All configuration options can be set via environment variables:
+-   `SC_AGENT_CONFIG`: Path to the configuration file.
+-   `SC_COLLECTION_INTERVAL`: e.g., `60s`
+-   `SC_INGESTOR_ENDPOINT`: e.g., `https://your-ingestor.com/api/metrics`
+-   `SC_VM_ID`: Manually specify the VM ID.
+-   `SC_LOG_LEVEL`: e.g., `debug`
+-   `SC_LABEL_<KEY>`: For custom labels, e.g., `SC_LABEL_ENVIRONMENT=production`.
 
-```bash
-# Basic configuration
-export SC_COLLECTION_INTERVAL=60s
-export SC_INGESTOR_ENDPOINT=https://metrics.example.com/ingest
-export SC_VM_ID=my-unique-vm-id
-export SC_LOG_LEVEL=debug
-export SC_LABELS=env=prod,region=us-west-2,team=devops
+### VM ID Detection and Troubleshooting
 
-# Collector toggles
-export SC_COLLECTOR_PROCESSES=true
-export SC_COLLECTOR_CPU=true
-export SC_COLLECTOR_MEMORY=true
-export SC_COLLECTOR_DISK=true
-export SC_COLLECTOR_NETWORK=true
-export SC_COLLECTOR_FILESYSTEM=true
-# ... and many more (see config.example.yaml)
-```
+The agent attempts to automatically determine a unique `vm_id` using the following methods in order:
 
-## HTTP Protocol
+1.  `dmidecode -s system-uuid` (requires `dmidecode` to be installed and accessible, often needs root)
+2.  Contents of `/etc/machine-id`
+3.  Contents of `/proc/sys/kernel/random/boot_id`
+4.  The system's hostname
 
-### Metrics Transmission
+If the agent fails to start with an error like `"Failed to load configuration - VM ID detection failed"`, it means none of these methods succeeded. This is common in minimal environments or containers where `dmidecode` is not present or `/etc/machine-id` is not unique/available.
 
-**Request:**
-```
-POST /ingest
-Content-Type: application/timeseries-binary-0
-Content-Encoding: snappy
-User-Agent: sc-metrics-agent/1.0
+**Solution:**
 
-[Snappy-compressed JSON payload]
-```
-
-**Payload Format:**
-```json
-[
-  {
-    "name": "node_processes_pids",
-    "labels": {
-      "vm_id": "web-server-01",
-      "environment": "production"
-    },
-    "value": 42.0,
-    "timestamp": 1677123456789,
-    "type": "gauge"
-  }
-]
-```
-
-### Diagnostics Transmission
-
-**Request:**
-```
-POST /ingest
-Content-Type: application/diagnostics-binary-0
-Content-Encoding: snappy
-```
-
-**Diagnostic Payload:**
-```json
-{
-  "agent_id": "sc-agent-1677123456",
-  "timestamp": 1677123456789,
-  "status": "healthy",
-  "last_error": "",
-  "metrics_count": 156,
-  "collector_status": {
-    "processes": true,
-    "cpu": true,
-    "memory": true
-  },
-  "metadata": {
-    "version": "1.0",
-    "go_version": "1.24.3"
-  }
-}
-```
-
-## Advanced Features
-
-### Payload Logging
-
-The agent logs complete metric payloads before compression for debugging:
-
-```json
-{
-  "level": "debug",
-  "msg": "Sending metrics payload (before compression)",
-  "metrics_count": 156,
-  "payload_size_bytes": 8432,
-  "payload_preview": "[{\"name\":\"node_cpu_seconds_total\",...}]",
-  "time": "2024-01-15T10:30:45Z"
-}
-```
-
-### Compression Efficiency
-
-Snappy compression typically achieves 50-80% size reduction:
-
-```json
-{
-  "level": "debug", 
-  "msg": "Compressed payload",
-  "original_size": 8432,
-  "compressed_size": 4216,
-  "compression_ratio": 0.5,
-  "time": "2024-01-15T10:30:45Z"
-}
-```
-
-### Error Handling & Resilience
-
-- **Automatic retry** on HTTP status codes: 429, 500, 502, 503, 504
-- **Rate limiting** compliance via `Retry-After` headers
-- **Partial collection** continues even if some collectors fail
-- **Diagnostic fallback** sends agent health when metrics fail
-- **Graceful degradation** with detailed error logging
-
-## Deployment
-
-### Systemd Service
-
-Create `/etc/systemd/system/sc-agent.service`:
+The systemd service file (`packaging/systemd/sc-metrics-agent.service`) has been updated to attempt to set the `SC_VM_ID` environment variable using `dmidecode` before starting the agent:
 
 ```ini
-[Unit]
-Description=SC Metrics Agent
-After=network.target
-Wants=network.target
-
 [Service]
-Type=simple
-User=root
-Group=root
-ExecStart=/usr/local/bin/sc-agent
-Environment=SC_AGENT_CONFIG=/etc/sc-agent/config.yaml
-Restart=always
-RestartSec=5
-KillMode=mixed
-KillSignal=SIGTERM
-
-[Install]
-WantedBy=multi-user.target
+# ... other settings ...
+ExecStartPre=/bin/sh -c "echo SC_VM_ID=$(/usr/sbin/dmidecode -s system-uuid 2>/dev/null || echo 'unknown-vm-id') > /run/sc-metrics-agent.env"
+EnvironmentFile=/run/sc-metrics-agent.env
+ExecStart=/usr/local/bin/sc-metrics-agent
+Environment=SC_AGENT_CONFIG=/etc/sc-metrics-agent/config.yaml
+# ... other settings ...
 ```
+
+This `ExecStartPre` line tries to get the UUID via `dmidecode`. If it fails (e.g., `dmidecode` not found or no permission), it defaults to `unknown-vm-id`. The output is written to `/run/sc-metrics-agent.env`, which is then sourced by `EnvironmentFile`.
+
+**To ensure this works:**
+
+1.  **Install `dmidecode`**: On Debian/Ubuntu: `sudo apt update && sudo apt install dmidecode`. On RHEL/CentOS: `sudo yum install dmidecode`.
+2.  Ensure the systemd service is reloaded and restarted after any changes: `sudo systemctl daemon-reload && sudo systemctl restart sc-metrics-agent.service`.
+
+If `dmidecode` is not an option, you can manually set `SC_VM_ID`:
+
+*   **In the systemd service file**: Add `Environment="SC_VM_ID=your-unique-id"`.
+*   **In the `config.yaml`**: Set `vm_id: "your-unique-id"`.
+
+## Usage
+
+### Running Directly
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable sc-agent
-sudo systemctl start sc-agent
+# Build the agent
+make build
+
+# Run with default configuration (looks for config.yaml in current dir)
+sudo ./build/sc-agent
+
+# Specify a config file
+sudo SC_AGENT_CONFIG=/path/to/your/config.yaml ./build/sc-agent
+
+# Override settings with environment variables
+sudo SC_INGESTOR_ENDPOINT=http://localhost:8080 SC_LOG_LEVEL=debug ./build/sc-agent
 ```
 
-### Docker Deployment
-
-```dockerfile
-FROM golang:1.24.3-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go mod download && go build -o sc-agent ./cmd/agent
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates dmidecode
-WORKDIR /root/
-COPY --from=builder /app/sc-agent .
-CMD ["./sc-agent"]
-```
+### Checking Version
 
 ```bash
-docker build -t sc-agent .
-docker run -d \
-  --name sc-agent \
-  --pid=host \
-  --privileged \
-  -v /proc:/host/proc:ro \
-  -v /sys:/host/sys:ro \
-  -e SC_INGESTOR_ENDPOINT=https://metrics.example.com/ingest \
-  -e SC_VM_ID=docker-host-01 \
-  sc-agent
+./build/sc-agent -v
+# or if installed via package manager
+sc-metrics-agent -v
 ```
 
-### Kubernetes Deployment
+## Metrics Collected
 
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: sc-metrics-agent
-spec:
-  selector:
-    matchLabels:
-      app: sc-metrics-agent
-  template:
-    metadata:
-      labels:
-        app: sc-metrics-agent
-    spec:
-      hostPID: true
-      hostNetwork: true
-      containers:
-      - name: sc-agent
-        image: sc-agent:latest
-        securityContext:
-          privileged: true
-        env:
-        - name: SC_INGESTOR_ENDPOINT
-          value: "https://metrics.company.com/ingest"
-        - name: SC_VM_ID
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-        - name: SC_LABELS
-          value: "cluster=prod,datacenter=us-east-1"
-        volumeMounts:
-        - name: proc
-          mountPath: /host/proc
-          readOnly: true
-        - name: sys
-          mountPath: /host/sys
-          readOnly: true
-      volumes:
-      - name: proc
-        hostPath:
-          path: /proc
-      - name: sys
-        hostPath:
-          path: /sys
-```
+The agent collects a wide range of metrics. Below is a summary. For a detailed list, please refer to the `collectors` section in `config.example.yaml` and the source code under `pkg/collector/`.
+
+-   **Process Metrics**: PID count, process states, thread counts.
+-   **CPU Metrics**: Usage per core (user, system, idle, iowait), CPU frequency, context switches, interrupts.
+-   **Memory Metrics**: Total, free, available, used memory; buffer and cache sizes; swap space details.
+-   **Virtual Memory Stats**: Page-ins/outs, swap-ins/outs (`vmstat`).
+-   **Storage Metrics**: Disk reads/writes (completed operations, bytes, time spent).
+-   **Filesystem Metrics**: Total, free, used space per filesystem; inode counts.
+-   **Network Metrics**: Bytes/packets received/transmitted per interface, errors, drops.
+-   **Network Connection Metrics**: Active connections by protocol/state (`netstat`), socket usage (`sockstat`).
+-   **System Information**: Load averages (1, 5, 15 min), boot time, system time, uptime, entropy.
+-   **Advanced Metrics**: Thermal zone temperatures, CPU/memory/IO pressure stall information.
 
 ## Development
 
-### Build Commands
+### Building
 
 ```bash
-# Development build and test
 make build
-make test
-make test-coverage
-
-# Production builds
-make build-all          # Multi-platform binaries
-make release            # Release archives
-
-# Code quality
-make lint               # Run linters
-make fmt                # Format code
-make security           # Security scan
-
-# Development tools
-make dev-setup          # Install dev dependencies
-make watch              # Auto-rebuild on changes
-```
-
-### Project Structure
-
-```
-sc-metrics-agent/
-├── cmd/agent/           # Main application entry point
-├── pkg/
-│   ├── aggregate/       # Metric aggregation and processing
-│   ├── clients/         # HTTP client with Snappy compression
-│   ├── collector/       # Comprehensive system metric collectors
-│   ├── config/          # Configuration management with dmidecode
-│   ├── decorator/       # Metric labeling and enhancement
-│   └── pipeline/        # Processing pipeline orchestration
-├── config.example.yaml  # Comprehensive configuration example
-├── Dockerfile          # Container deployment
-├── Makefile           # Build and development automation
-└── README.md          # This documentation
 ```
 
 ### Testing
 
 ```bash
-# Run all tests
-go test ./...
-
-# Test with race detection
-go test -race ./...
-
-# Benchmark tests
-go test -bench=. ./...
-
-# Integration test with mock server
-go run test_payload_logging.go
+make test
 ```
 
-## Monitoring
-
-### Structured Logging
-
-All logs use structured JSON format with Zap:
-
-```json
-{
-  "level": "info",
-  "time": "2024-01-15T10:30:45Z",
-  "caller": "pipeline/processor.go:147",
-  "msg": "Pipeline processing completed successfully",
-  "collected_families": 12,
-  "decorated_families": 12,
-  "aggregated_metrics": 156,
-  "processing_time": "45.2ms"
-}
-```
-
-### Health Monitoring
-
-Monitor agent health through:
-
-1. **Log Analysis**: Check for error patterns and processing times
-2. **Diagnostic Payloads**: Monitor agent status and collector health
-3. **Process Monitoring**: Ensure agent process remains running
-4. **Metric Flow**: Verify metrics are reaching the ingestor
-5. **Resource Usage**: Monitor agent CPU and memory consumption
-
-### Performance Metrics
-
-Key performance indicators:
-
-- **Collection Time**: Time to gather all enabled metrics
-- **Processing Time**: Complete pipeline execution time
-- **Compression Ratio**: Payload size reduction efficiency
-- **HTTP Response Time**: Network transmission latency
-- **Error Rate**: Failed collection or transmission percentage
-
-## Troubleshooting
-
-### Common Issues
-
-**Agent fails to start:**
-```bash
-# Check configuration syntax
-go run ./cmd/agent -validate-config
-
-# Verify permissions for system access
-sudo ./build/sc-agent
-
-# Test network connectivity
-curl -X POST https://your-ingestor-endpoint/ingest
-```
-
-**Missing metrics:**
-```bash
-# Check collector status in logs
-grep "collector" /var/log/sc-agent.log
-
-# Verify system permissions
-ls -la /proc /sys
-
-# Test individual collectors
-SC_COLLECTOR_PROCESSES=true SC_LOG_LEVEL=debug ./build/sc-agent
-```
-
-**High resource usage:**
-```bash
-# Monitor with reduced collectors
-SC_COLLECTOR_THERMAL=false SC_COLLECTOR_PRESSURE=false ./build/sc-agent
-
-# Increase collection interval
-SC_COLLECTION_INTERVAL=60s ./build/sc-agent
-
-# Check system load
-top -p $(pgrep sc-agent)
-```
-
-### Debug Mode
-
-Enable comprehensive debugging:
+### Linting
 
 ```bash
-SC_LOG_LEVEL=debug ./build/sc-agent
+make lint
 ```
 
-Debug logs include:
-- Metric collection details for each collector
-- Complete payload contents before compression
-- HTTP request/response debugging
-- Compression statistics and ratios
-- Processing pipeline timing information
+### Releasing
 
-## Performance Tuning
+The release process is managed by `make` targets and the `packaging/scripts/release.sh` script. It involves version bumping, git tagging, and potentially building release artifacts.
 
-### Collection Optimization
-
-**High-frequency monitoring:**
-```yaml
-collection_interval: 10s
-collectors:
-  processes: true
-  cpu: true
-  memory: true
-  loadavg: true
-  # Disable expensive collectors
-  pressure: false
-  thermal: false
-```
-
-**Resource-constrained environments:**
-```yaml
-collection_interval: 120s
-collectors:
-  # Enable only essential metrics
-  processes: true
-  cpu: true
-  memory: true
-  loadavg: true
-  # Disable detailed metrics
-  disk: false
-  network: false
-  filesystem: false
-```
-
-### Network Optimization
-
-- **Compression**: Snappy achieves 50-80% size reduction
-- **Batching**: Default 1000 metrics per HTTP request
-- **Keep-alive**: HTTP connections reused for efficiency
-- **Retry logic**: Exponential backoff prevents network storms
-
-## Security Considerations
-
-### Permissions
-
-- **Root access**: Required for complete system metric visibility
-- **Proc access**: Needs read access to `/proc` and `/sys` filesystems
-- **Network access**: Requires outbound HTTPS connectivity
-
-### Data Privacy
-
-- **No sensitive data**: Metrics contain only system performance data
-- **Configurable labels**: Control what metadata is transmitted
-- **Network encryption**: HTTPS recommended for transmission
-- **Local storage**: No metrics cached locally
-
-### Container Security
-
-- **Minimal image**: Alpine-based with only required dependencies
-- **Non-root option**: Can run unprivileged with reduced metrics
-- **Read-only mounts**: System directories mounted read-only
-- **Capability restrictions**: Only required Linux capabilities
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+-   `make release-patch`
+-   `make release-minor`
+-   `make release-major`
 
 ## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add comprehensive disk metrics'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Contributions are welcome! Please follow these steps:
 
-## Support
+1.  Fork the repository.
+2.  Create a new branch (`git checkout -b feature/your-feature-name`).
+3.  Make your changes.
+4.  Ensure tests pass (`make test`).
+5.  Ensure code is linted (`make lint`).
+6.  Commit your changes (`git commit -am 'Add some feature'`).
+7.  Push to the branch (`git push origin feature/your-feature-name`).
+8.  Create a new Pull Request.
 
-For issues and questions:
+Please ensure your code follows Go best practices and includes tests for new functionality.
 
-1. Check the troubleshooting section above
-2. Review existing GitHub issues
-3. Create a new issue with:
-   - Agent version and configuration
-   - Complete error messages and debug logs
-   - Steps to reproduce the problem
-   - System information (OS, kernel version, hardware)
-   - Expected vs actual behavior
+## License
 
-## Changelog
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details (assuming you will add one, if not, state the license directly).
 
-### v1.0.0
-- Comprehensive system metrics collection (150+ metrics)
-- Automatic VM ID detection via dmidecode
-- Zap structured logging with payload transparency
-- klauspost/compress/snappy for optimal compression
-- Production-ready deployment options
-- Complete Docker and Kubernetes support
-- Extensive configuration options and environment variables
-- Advanced error handling and diagnostic reporting
+---
+
+*This README was generated with assistance from an AI coding partner.*

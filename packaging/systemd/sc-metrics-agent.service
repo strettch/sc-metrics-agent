@@ -8,8 +8,7 @@ Type=simple
 User=root
 Group=root
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/usr/local/bin/sc-metrics-agent
-Environment=SC_AGENT_CONFIG=/etc/sc-metrics-agent/config.yaml
+ExecStart=/usr/local/bin/start-sc-metrics-agent.sh
 Restart=always
 RestartSec=5
 KillMode=mixed

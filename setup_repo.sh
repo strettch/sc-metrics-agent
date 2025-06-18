@@ -61,6 +61,10 @@ STAGING_DIR="/tmp/${PACKAGE_NAME}-build"
 rm -rf "${STAGING_DIR}"
 mkdir -p "${STAGING_DIR}/usr/local/bin" "${STAGING_DIR}/etc/${PACKAGE_NAME}" "${STAGING_DIR}/etc/systemd/system"
 cp build/${PACKAGE_NAME} "${STAGING_DIR}/usr/local/bin/"
+# === Add start script ===
+cp packaging/scripts/start-sc-metrics-agent.sh "${STAGING_DIR}/usr/local/bin/start-sc-metrics-agent.sh"
+chmod +x "${STAGING_DIR}/usr/local/bin/start-sc-metrics-agent.sh"
+# === End add start script ===
 cp config.example.yaml "${STAGING_DIR}/etc/${PACKAGE_NAME}/config.yaml"
 cp "${SERVICE_FILE}" "${STAGING_DIR}/etc/systemd/system/"
 chmod +x "${POSTINSTALL_SCRIPT}" "${PREREMOVE_SCRIPT}"

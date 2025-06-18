@@ -116,18 +116,21 @@ run-config: build
 	@echo "Running $(BINARY_NAME) with config file..."
 	SC_AGENT_CONFIG=config.yaml ./$(BUILD_DIR)/$(BINARY_NAME)
 
-# Install the binary to system path
-install: build
-	@echo "Installing $(BINARY_NAME) to /usr/local/bin..."
-	sudo cp $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/
-	sudo chmod +x /usr/local/bin/$(BINARY_NAME)
-	@echo "Installation complete"
+# Install the binary and scripts
+install:
+	@echo "Installing $(BINARY_NAME) and scripts to /usr/local/bin..."
+	@sudo cp $(BUILD_DIR)/$(BINARY_NAME) /usr/local/bin/$(BINARY_NAME)
+	@sudo chmod +x /usr/local/bin/$(BINARY_NAME)
+	@sudo cp packaging/scripts/start-sc-metrics-agent.sh /usr/local/bin/start-sc-metrics-agent.sh
+	@sudo chmod +x /usr/local/bin/start-sc-metrics-agent.sh
+	@echo "$(BINARY_NAME) and scripts installed successfully."
 
-# Uninstall the binary from system path
+# Uninstall the binary and scripts
 uninstall:
-	@echo "Uninstalling $(BINARY_NAME)..."
-	sudo rm -f /usr/local/bin/$(BINARY_NAME)
-	@echo "Uninstallation complete"
+	@echo "Uninstalling $(BINARY_NAME) and scripts from /usr/local/bin..."
+	@sudo rm -f /usr/local/bin/$(BINARY_NAME)
+	@sudo rm -f /usr/local/bin/start-sc-metrics-agent.sh
+	@echo "$(BINARY_NAME) and scripts uninstalled successfully."
 
 # Clean build artifacts
 clean:

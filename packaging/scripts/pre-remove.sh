@@ -18,6 +18,9 @@ if [ "$1" = "purge" ]; then
     echo "Reloading systemd daemon..."
     systemctl daemon-reload || true # Allow failure if systemd is not available (e.g. in a container)
 
+    echo "Resetting failed state for sc-metrics-agent service..."
+    systemctl reset-failed sc-metrics-agent.service || true # Clear any failed state
+
     echo "sc-metrics-agent purge script finished."
 else
     echo "Stopping and disabling sc-metrics-agent (on remove/upgrade)..."
