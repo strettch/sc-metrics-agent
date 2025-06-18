@@ -5,8 +5,12 @@ set -e
 ORG_NAME="strettch"
 GPG_EMAIL="engineering@strettch.com"
 PACKAGE_NAME="sc-metrics-agent"
-PACKAGE_VERSION="1.0.2" # Increment this for new versions
+PACKAGE_VERSION="1.1.6" # Increment this for new versions
 REPO_DOMAIN="repo.cloud.strettch.dev"
+DISTRIBUTIONS="focal jammy noble" # Use spaces for loop iteration
+# The standard, public-facing directory for the repository files.
+# Using /var/www/html is the standard practice and avoids AppArmor/SELinux issues.
+WEB_ROOT_DIR="/var/www/html/aptly"
 # ---
 
 # --- Asset Paths (uses files from your repo) ---
@@ -30,30 +34,38 @@ if [ ! -f "$PREREMOVE_SCRIPT" ]; then
 fi
 # ---
 
-echo "--- [Step 1/6] Cleaning up previous build artifacts and repository..."
-aptly publish drop focal || true
-if aptly snapshot list -raw | grep -q .; then
-    aptly snapshot list -raw | xargs --no-run-if-empty aptly snapshot delete
+echo "--- [Step 1/7] Cleaning up previous repository publications..."
+for dist in ${DISTRIBUTIONS}; do
+    sudo aptly publish drop ${dist} || echo "No repository for '${dist}' was published. Continuing."
+done
+sudo aptly publish drop "focal,jammy,noble" || echo "No malformed composite repository found. Continuing."
+
+if sudo aptly snapshot list -raw | grep -q .; then
+    echo "Deleting existing snapshots..."
+    while IFS= read -r snapshot_name; do
+        if [ -n "$snapshot_name" ]; then
+            echo " - Dropping snapshot: $snapshot_name"
+            sudo aptly snapshot drop "$snapshot_name"
+        fi
+    done <<< "$(sudo aptly snapshot list -raw)"
 fi
-aptly repo remove sc-metrics-agent-repo ${PACKAGE_NAME} || true
+sudo aptly db cleanup
+sudo aptly repo remove sc-metrics-agent-repo ${PACKAGE_NAME} || echo "No package to remove from repo. Continuing."
 rm -f ${PACKAGE_NAME}_*.deb
 
-echo "--- [Step 2/6] Building Go binary..."
+echo "--- [Step 2/7] Building Go binary..."
 GOOS=linux GOARCH=amd64 go build -o ${PACKAGE_NAME} ./cmd/agent/main.go
 
-echo "--- [Step 3/6] Preparing packaging assets..."
+echo "--- [Step 3/7] Preparing packaging assets..."
 STAGING_DIR="/tmp/${PACKAGE_NAME}-build"
 rm -rf "${STAGING_DIR}"
-mkdir -p "${STAGING_DIR}/usr/local/bin"
-mkdir -p "${STAGING_DIR}/etc/${PACKAGE_NAME}"
-mkdir -p "${STAGING_DIR}/etc/systemd/system"
-
+mkdir -p "${STAGING_DIR}/usr/local/bin" "${STAGING_DIR}/etc/${PACKAGE_NAME}" "${STAGING_DIR}/etc/systemd/system"
 cp ${PACKAGE_NAME} "${STAGING_DIR}/usr/local/bin/"
 cp config.example.yaml "${STAGING_DIR}/etc/${PACKAGE_NAME}/config.yaml"
 cp "${SERVICE_FILE}" "${STAGING_DIR}/etc/systemd/system/"
 chmod +x "${POSTINSTALL_SCRIPT}" "${PREREMOVE_SCRIPT}"
 
-echo "--- [Step 4/6] Building the .deb package with FPM..."
+echo "--- [Step 4/7] Building the .deb package..."
 fpm -s dir -t deb -n ${PACKAGE_NAME} -v ${PACKAGE_VERSION} \
   -C "${STAGING_DIR}/" \
   --description "SC Metrics Agent for system monitoring by ${ORG_NAME}" \
@@ -63,85 +75,93 @@ fpm -s dir -t deb -n ${PACKAGE_NAME} -v ${PACKAGE_VERSION} \
   --after-install "${POSTINSTALL_SCRIPT}" \
   --before-remove "${PREREMOVE_SCRIPT}"
 
-echo "--- [Step 5/6] Setting up and publishing the Aptly repository..."
-if ! aptly repo show sc-metrics-agent-repo > /dev/null 2>&1; then
-    aptly repo create -distribution="focal" -component="main" sc-metrics-agent-repo
+echo "--- [Step 5/7] Creating and Publishing the new version..."
+if ! sudo aptly repo show sc-metrics-agent-repo > /dev/null 2>&1; then
+    FIRST_DIST=$(echo ${DISTRIBUTIONS} | cut -d' ' -f1)
+    sudo aptly repo create -distribution="${FIRST_DIST}" -component="main" sc-metrics-agent-repo
 fi
-aptly repo add sc-metrics-agent-repo ${PACKAGE_NAME}_${PACKAGE_VERSION}_amd64.deb
+sudo aptly repo add sc-metrics-agent-repo ${PACKAGE_NAME}_${PACKAGE_VERSION}_amd64.deb
 SNAPSHOT_NAME="${PACKAGE_NAME}-${PACKAGE_VERSION}"
-aptly snapshot create "${SNAPSHOT_NAME}" from repo sc-metrics-agent-repo
-aptly publish snapshot -gpg-key="${GPG_EMAIL}" "${SNAPSHOT_NAME}"
+sudo aptly snapshot create "${SNAPSHOT_NAME}" from repo sc-metrics-agent-repo
+
+echo "Publishing new snapshot to distributions: ${DISTRIBUTIONS}"
+for dist in ${DISTRIBUTIONS}; do
+    sudo aptly publish snapshot -gpg-key="${GPG_EMAIL}" -distribution="${dist}" "${SNAPSHOT_NAME}"
+done
+
+echo "--- [Step 6/7] Configuring web server and generating client install script..."
+sudo mkdir -p "${WEB_ROOT_DIR}"
+sudo rsync -a --delete /root/.aptly/public/ "${WEB_ROOT_DIR}/"
 
 GPG_PUBLIC_KEY_FILE="${PACKAGE_NAME}-repo.gpg"
 gpg --armor --export "${GPG_EMAIL}" > "${GPG_PUBLIC_KEY_FILE}"
-mv "${GPG_PUBLIC_KEY_FILE}" ~/.aptly/public/
+sudo mv "${GPG_PUBLIC_KEY_FILE}" "${WEB_ROOT_DIR}/"
 
-echo "--- [Step 6/6] Generating Caddy config and client install.sh script..."
-CADDY_USER_HOME=$(eval echo ~$(logname))
-CADDY_ROOT_DIR="${CADDY_USER_HOME}/.aptly/public"
-cat << EOF > /etc/caddy/Caddyfile
-${REPO_DOMAIN} {
-    root * ${CADDY_ROOT_DIR}
-    file_server
-}
-EOF
-systemctl restart caddy
-
-INSTALL_SCRIPT_PATH="${CADDY_ROOT_DIR}/install.sh"
-CONFIG_FILE_PATH="/etc/${PACKAGE_NAME}/config.yaml"
-cat << EOF > "${INSTALL_SCRIPT_PATH}"
+INSTALL_SCRIPT_PATH="${WEB_ROOT_DIR}/install.sh"
+TMP_INSTALL_SCRIPT=$(mktemp)
+cat << EOF > "${TMP_INSTALL_SCRIPT}"
 #!/bin/sh
 set -e
-
 # --- Configuration ---
 REPO_HOST="${REPO_DOMAIN}"
 PACKAGE_NAME="${PACKAGE_NAME}"
 GPG_KEY_FILENAME="${GPG_PUBLIC_KEY_FILE}"
-CONFIG_FILE="${CONFIG_FILE_PATH}"
+CONFIG_FILE="/etc/${PACKAGE_NAME}/config.yaml"
 # ---
-
 if [ "\$(id -u)" -ne "0" ]; then
     echo "This script must be run as root. Please use 'sudo'." >&2
     exit 1
 fi
-
-echo "--- Installing \${PACKAGE_NAME} ---"
-apt-get update
-apt-get install -y apt-transport-https ca-certificates curl gnupg
-
+if [ -f /etc/os-release ]; then
+    DISTRIBUTION=\$(. /etc/os-release && echo "\$VERSION_CODENAME")
+else
+    echo "Error: Unable to detect OS distribution codename." >&2
+    exit 1
+fi
+echo "--- Installing \${PACKAGE_NAME} for \${DISTRIBUTION} ---"
+apt-get update > /dev/null
+apt-get install -y apt-transport-https ca-certificates curl gnupg > /dev/null
 KEYRING_FILE="/usr/share/keyrings/\${PACKAGE_NAME}-keyring.gpg"
-curl -fsSL "https://\${REPO_HOST}/\${GPG_KEY_FILENAME}" | gpg --dearmor -o "\${KEYRING_FILE}"
-
+curl -fsSL "https://\${REPO_HOST}/\${GPG_KEY_FILENAME}" | gpg --dearmor | sudo tee "\${KEYRING_FILE}" >/dev/null
 SOURCES_FILE="/etc/apt/sources.list.d/\${PACKAGE_NAME}.list"
-echo "deb [signed-by=\${KEYRING_FILE}] https://\${REPO_HOST} focal main" > "\${SOURCES_FILE}"
-
+echo "deb [signed-by=\${KEYRING_FILE}] https://\${REPO_HOST} \${DISTRIBUTION} main" | sudo tee "\${SOURCES_FILE}" >/dev/null
 echo "Updating package list for \${PACKAGE_NAME}..."
-apt-get update \
-  -o Dir::Etc::SourceList="\${SOURCES_FILE}" \
-  -o Dir::Etc::SourceParts="-" \
-  -o APT::Get::List-Cleanup="0"
-
+apt-get update \\
+  -o Dir::Etc::SourceList="\${SOURCES_FILE}" \\
+  -o Dir::Etc::SourceParts="-" \\
+  -o APT::Get::List-Cleanup="0" > /dev/null
 echo "Installing \${PACKAGE_NAME}..."
 apt-get install -y "\${PACKAGE_NAME}"
-
 echo
 echo "---"
 echo "✅ \${PACKAGE_NAME} was installed successfully!"
-echo
 echo "IMPORTANT: Please edit the configuration file to set your ingestor endpoint:"
 echo "   sudo nano \${CONFIG_FILE}"
 echo "After editing, restart the agent: sudo systemctl restart \${PACKAGE_NAME}"
 echo "To check status: systemctl status \${PACKAGE_NAME}"
 echo "---"
-
 exit 0
 EOF
-chmod +x "${INSTALL_SCRIPT_PATH}"
+
+sudo mv "${TMP_INSTALL_SCRIPT}" "${INSTALL_SCRIPT_PATH}"
+
+echo "--- [Step 7/7] Finalizing permissions and restarting Caddy..."
+# This is the crucial fix: set ownership and permissions AFTER all files are in place.
+sudo chmod 755 /var/www /var/www/html
+sudo chown -R caddy:caddy "${WEB_ROOT_DIR}"
+sudo chmod -R 755 "${WEB_ROOT_DIR}"
+
+sudo bash -c "cat << EOF > /etc/caddy/Caddyfile
+${REPO_DOMAIN} {
+    root * ${WEB_ROOT_DIR}
+    file_server
+}
+EOF"
+sudo systemctl restart caddy
 
 echo
 echo "========================================================================"
 echo "✅ Repository setup complete!"
-echo
 echo "To install the agent on a client machine, run:"
 echo "curl -sSL https://${REPO_DOMAIN}/install.sh | sudo bash"
 echo "========================================================================"
