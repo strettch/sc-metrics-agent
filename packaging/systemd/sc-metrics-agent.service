@@ -8,6 +8,8 @@ Type=simple
 User=root
 Group=root
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStartPre=/bin/sh -c "echo SC_VM_ID=$(/usr/sbin/dmidecode -s system-uuid 2>/dev/null || echo 'unknown-vm-id') > /run/sc-metrics-agent.env"
+EnvironmentFile=/run/sc-metrics-agent.env
 ExecStart=/usr/local/bin/sc-metrics-agent
 Environment=SC_AGENT_CONFIG=/etc/sc-metrics-agent/config.yaml
 Restart=always
