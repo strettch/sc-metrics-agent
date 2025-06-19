@@ -17,6 +17,8 @@ WEB_ROOT_DIR="/var/www/html/aptly"
 SERVICE_FILE="packaging/systemd/${PACKAGE_NAME}.service"
 POSTINSTALL_SCRIPT="packaging/scripts/post-install.sh"
 PREREMOVE_SCRIPT="packaging/scripts/pre-remove.sh"
+START_SCRIPT_FILENAME="start-sc-metrics-agent.sh"
+START_SCRIPT_SOURCE_PATH="packaging/scripts/${START_SCRIPT_FILENAME}"
 # ---
 
 # --- Pre-flight Checks ---
@@ -30,6 +32,10 @@ if [ ! -f "$POSTINSTALL_SCRIPT" ]; then
 fi
 if [ ! -f "$PREREMOVE_SCRIPT" ]; then
     echo "Error: Pre-remove script not found at ${PREREMOVE_SCRIPT}" >&2
+    exit 1
+fi
+if [ ! -f "$START_SCRIPT_SOURCE_PATH" ]; then
+    echo "Error: Start script not found at ${START_SCRIPT_SOURCE_PATH}" >&2
     exit 1
 fi
 # ---
@@ -62,8 +68,8 @@ rm -rf "${STAGING_DIR}"
 mkdir -p "${STAGING_DIR}/usr/local/bin" "${STAGING_DIR}/etc/${PACKAGE_NAME}" "${STAGING_DIR}/etc/systemd/system"
 cp build/${PACKAGE_NAME} "${STAGING_DIR}/usr/local/bin/"
 # === Add start script ===
-cp packaging/scripts/start-sc-metrics-agent.sh "${STAGING_DIR}/usr/local/bin/start-sc-metrics-agent.sh"
-chmod +x "${STAGING_DIR}/usr/local/bin/start-sc-metrics-agent.sh"
+cp "${START_SCRIPT_SOURCE_PATH}" "${STAGING_DIR}/usr/local/bin/${START_SCRIPT_FILENAME}"
+chmod +x "${STAGING_DIR}/usr/local/bin/${START_SCRIPT_FILENAME}"
 # === End add start script ===
 cp config.example.yaml "${STAGING_DIR}/etc/${PACKAGE_NAME}/config.yaml"
 cp "${SERVICE_FILE}" "${STAGING_DIR}/etc/systemd/system/"
@@ -123,19 +129,27 @@ else
     exit 1
 fi
 echo "--- Installing \${PACKAGE_NAME} for \${DISTRIBUTION} ---"
-apt-get update > /dev/null
-apt-get install -y apt-transport-https ca-certificates curl gnupg > /dev/null
+
+log_and_run() {
+    echo "\$1"
+    if ! eval "\$2"; then
+        echo "Error: Failed to \$3. Please check the output above for details." >&2
+        exit 1
+    fi
+}
+
+log_and_run "Updating package lists..." "apt-get update > /dev/null" "update package lists"
+log_and_run "Installing prerequisite packages..." "apt-get install -y apt-transport-https ca-certificates curl gnupg > /dev/null" "install prerequisite packages"
+
 KEYRING_FILE="/usr/share/keyrings/\${PACKAGE_NAME}-keyring.gpg"
-curl -fsSL "https://\${REPO_HOST}/\${GPG_KEY_FILENAME}" | gpg --dearmor | sudo tee "\${KEYRING_FILE}" >/dev/null
+log_and_run "Downloading and installing GPG key..." "curl -fsSL \"https://\${REPO_HOST}/\${GPG_KEY_FILENAME}\" | gpg --dearmor | sudo tee \"\${KEYRING_FILE}\" >/dev/null" "download and install GPG key"
+
 SOURCES_FILE="/etc/apt/sources.list.d/\${PACKAGE_NAME}.list"
-echo "deb [signed-by=\${KEYRING_FILE}] https://\${REPO_HOST} \${DISTRIBUTION} main" | sudo tee "\${SOURCES_FILE}" >/dev/null
-echo "Updating package list for \${PACKAGE_NAME}..."
-apt-get update \\
-  -o Dir::Etc::SourceList="\${SOURCES_FILE}" \\
-  -o Dir::Etc::SourceParts="-" \\
-  -o APT::Get::List-Cleanup="0" > /dev/null
-echo "Installing \${PACKAGE_NAME}..."
-apt-get install -y "\${PACKAGE_NAME}"
+log_and_run "Adding \${PACKAGE_NAME} repository..." "echo \"deb [signed-by=\${KEYRING_FILE}] https://\${REPO_HOST} \${DISTRIBUTION} main\" | sudo tee \"\${SOURCES_FILE}\" >/dev/null" "add \${PACKAGE_NAME} repository"
+
+log_and_run "Updating package list for \${PACKAGE_NAME}..." "apt-get update -o Dir::Etc::SourceList='\${SOURCES_FILE}' -o Dir::Etc::SourceParts='-' -o APT::Get::List-Cleanup='0' > /dev/null" "update package list for \${PACKAGE_NAME}"
+
+log_and_run "Installing \${PACKAGE_NAME}..." "apt-get install -y \"\${PACKAGE_NAME}\"" "install \${PACKAGE_NAME}"
 echo
 echo "---"
 echo "✅ \${PACKAGE_NAME} was installed successfully!"
