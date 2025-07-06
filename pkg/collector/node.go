@@ -3,12 +3,14 @@ package collector
 import (
 	"context"
 	"fmt"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/procfs"
+	"github.com/prometheus/procfs/blockdevice"
 	"go.uber.org/zap"
 	"github.com/strettch/sc-metrics-agent/pkg/config"
 )
@@ -45,15 +47,8 @@ func NewSystemCollector(cfg config.CollectorConfig, logger *zap.Logger) (*System
 		procFS:   procFS,
 	}
 
-	// Add Go runtime metrics (always useful)
-	registry.MustRegister(collectors.NewGoCollector())
-	enabled["go"] = true
-	logger.Info("Enabled Go runtime collector")
-
-	// Add process metrics (always useful)
-	registry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
-	enabled["process"] = true
-	logger.Info("Enabled process collector")
+	// Go runtime and process metrics removed - not useful for VM monitoring
+	// These only track the agent itself, not the VM performance
 
 	// Add custom system metrics based on configuration
 	if cfg.CPU {
@@ -346,12 +341,32 @@ func (c *diskStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *diskStatsCollector) Collect(ch chan<- prometheus.Metric) {
-	// Simple implementation with placeholder values
-	// In production, you'd parse /proc/diskstats directly
-	ch <- prometheus.MustNewConstMetric(c.descs["reads"], prometheus.CounterValue, 1000, "sda")
-	ch <- prometheus.MustNewConstMetric(c.descs["writes"], prometheus.CounterValue, 500, "sda")
-	ch <- prometheus.MustNewConstMetric(c.descs["read_bytes"], prometheus.CounterValue, 1048576, "sda")
-	ch <- prometheus.MustNewConstMetric(c.descs["write_bytes"], prometheus.CounterValue, 524288, "sda")
+	// Use blockdevice package to get disk stats
+	blockFS, err := blockdevice.NewFS("/proc", "/sys")
+	if err != nil {
+		c.logger.Debug("Failed to initialize blockdevice FS", zap.Error(err))
+		return
+	}
+
+	diskStats, err := blockFS.ProcDiskstats()
+	if err != nil {
+		c.logger.Debug("Failed to get disk stats", zap.Error(err))
+		return
+	}
+
+	for _, stat := range diskStats {
+		// Skip loop devices, ram disks, and other virtual devices
+		if strings.HasPrefix(stat.DeviceName, "loop") ||
+			strings.HasPrefix(stat.DeviceName, "ram") ||
+			strings.HasPrefix(stat.DeviceName, "dm-") {
+			continue
+		}
+
+		ch <- prometheus.MustNewConstMetric(c.descs["reads"], prometheus.CounterValue, float64(stat.ReadIOs), stat.DeviceName)
+		ch <- prometheus.MustNewConstMetric(c.descs["writes"], prometheus.CounterValue, float64(stat.WriteIOs), stat.DeviceName)
+		ch <- prometheus.MustNewConstMetric(c.descs["read_bytes"], prometheus.CounterValue, float64(stat.ReadSectors*512), stat.DeviceName)
+		ch <- prometheus.MustNewConstMetric(c.descs["write_bytes"], prometheus.CounterValue, float64(stat.WriteSectors*512), stat.DeviceName)
+	}
 }
 
 type networkCollector struct {
@@ -404,6 +419,42 @@ func (c *filesystemCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *filesystemCollector) Collect(ch chan<- prometheus.Metric) {
-	// Simplified filesystem metrics - in production you'd use syscall.Statfs
-	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, 1000000000, "/dev/root", "ext4", "/")
+	mounts, err := procfs.GetMounts()
+	if err != nil {
+		c.logger.Debug("Failed to get mount information", zap.Error(err))
+		return
+	}
+
+	for _, mount := range mounts {
+		// Skip virtual filesystems and special mounts
+		if strings.HasPrefix(mount.FSType, "proc") ||
+			strings.HasPrefix(mount.FSType, "sys") ||
+			strings.HasPrefix(mount.FSType, "dev") ||
+			strings.HasPrefix(mount.FSType, "tmp") ||
+			strings.HasPrefix(mount.FSType, "cgroup") ||
+			strings.HasPrefix(mount.FSType, "securityfs") ||
+			strings.HasPrefix(mount.FSType, "bpf") ||
+			strings.HasPrefix(mount.FSType, "pstore") ||
+			strings.HasPrefix(mount.FSType, "efivar") ||
+			strings.HasPrefix(mount.FSType, "configfs") ||
+			strings.HasPrefix(mount.FSType, "fuse") ||
+			mount.FSType == "overlay" ||
+			mount.FSType == "squashfs" {
+			continue
+		}
+
+		// Get filesystem stats using syscall.Statfs
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(mount.MountPoint, &stat); err != nil {
+			c.logger.Debug("Failed to get filesystem stats", 
+				zap.String("mountpoint", mount.MountPoint), 
+				zap.Error(err))
+			continue
+		}
+
+		// Calculate total size in bytes
+		totalSize := float64(stat.Blocks * uint64(stat.Bsize))
+		
+		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, totalSize, mount.Source, mount.FSType, mount.MountPoint)
+	}
 }
