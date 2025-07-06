@@ -108,29 +108,21 @@ func main() {
 
 	logger.Info("Agent started successfully")
 
-	// Main execution loop
+	// Simple main execution loop
 	for {
 		select {
 		case <-ticker.C:
 			if err := pipelineProcessor.Process(ctx); err != nil {
 				logger.Error("Failed to process metrics pipeline", zap.Error(err))
-				
-				// Send diagnostics on failure
-				if diagErr := pipelineProcessor.WriteDiagnostics(ctx); diagErr != nil {
-					logger.Error("Failed to send diagnostics", zap.Error(diagErr))
-				}
 			}
 
 		case sig := <-sigChan:
-			logger.Info("Received shutdown signal", zap.String("signal", sig.String()))
+			logger.Info("Received shutdown signal, cleaning up", zap.String("signal", sig.String()))
 			cancel()
 			
-			// Send final diagnostics before shutdown
-			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer shutdownCancel()
-			
-			if err := pipelineProcessor.WriteDiagnostics(shutdownCtx); err != nil {
-				logger.Warn("Failed to send final diagnostics", zap.Error(err))
+			// Clean up resources
+			if err := pipelineProcessor.Close(); err != nil {
+				logger.Error("Error during cleanup", zap.Error(err))
 			}
 			
 			logger.Info("Agent shutdown complete")
@@ -138,6 +130,11 @@ func main() {
 
 		case <-ctx.Done():
 			logger.Info("Context cancelled, shutting down")
+			
+			// Clean up resources
+			if err := pipelineProcessor.Close(); err != nil {
+				logger.Error("Error during cleanup", zap.Error(err))
+			}
 			return
 		}
 	}
