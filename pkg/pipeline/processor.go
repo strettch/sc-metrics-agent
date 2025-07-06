@@ -204,24 +204,19 @@ func (p *Processor) GetLastMetricCount() int {
 func (p *Processor) Close() error {
 	p.logger.Debug("Closing pipeline processor")
 	
-	var errs []error
-	
 	// Close collector
 	if closer, ok := p.collector.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("failed to close collector: %w", err))
+			p.logger.Warn("Failed to close collector", zap.Error(err))
 		}
 	}
 	
 	// Close writer
 	if err := p.writer.Close(); err != nil {
-		errs = append(errs, fmt.Errorf("failed to close writer: %w", err))
+		p.logger.Warn("Failed to close writer", zap.Error(err))
 	}
 	
-	if len(errs) > 0 {
-		return fmt.Errorf("errors during close: %v", errs)
-	}
-	
+	p.logger.Debug("Pipeline processor closed")
 	return nil
 }
 
