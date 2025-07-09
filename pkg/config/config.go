@@ -144,7 +144,7 @@ func getVMIDFromDMIDecode() string {
 	}
 
 	if err != nil {
-		log.Printf("Error getting VM ID: dmidecode command failed: %v. Output: %s", err, string(output))
+		log.Printf("Error getting VM ID: dmidecode command failed: %v", err)
 		return ""
 	}
 
@@ -383,7 +383,7 @@ func (c *Config) validate() error {
 	}
 
 	if c.VMID == "" {
-		return fmt.Errorf("vm_id cannot be determined: dmidecode failed, /etc/machine-id unavailable, /proc/sys/kernel/random/boot_id unavailable, and hostname unavailable. Please set vm_id manually in config or SC_VM_ID environment variable")
+		return fmt.Errorf("vm_id cannot be determined. Please set vm_id manually in config or SC_VM_ID environment variable")
 	}
 
 	if c.MaxRetries < 0 {

@@ -137,11 +137,10 @@ func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWith
 		return nil, fmt.Errorf("failed to marshal metrics: %w", err)
 	}
 
-	// Log the payload before compression
+	// Log the payload before compression (without sensitive data)
 	c.logger.Debug("Sending metrics payload (before compression)",
 		zap.Int("metrics_count", len(metrics)),
 		zap.Int("payload_size_bytes", len(payload)),
-		zap.String("payload_preview", string(payload[:min(500, len(payload))])),
 	)
 
 	// Compress with Snappy
@@ -166,12 +165,11 @@ func (c *Client) SendDiagnostics(ctx context.Context, diagnostics DiagnosticPayl
 		return nil, fmt.Errorf("failed to marshal diagnostics: %w", err)
 	}
 
-	// Log the diagnostics payload
+	// Log the diagnostics payload (without sensitive data)
 	c.logger.Debug("Sending diagnostics payload",
 		zap.String("agent_id", diagnostics.AgentID),
 		zap.String("status", diagnostics.Status),
 		zap.Int("payload_size_bytes", len(payload)),
-		zap.String("payload", string(payload)),
 	)
 
 	// Compress with Snappy
