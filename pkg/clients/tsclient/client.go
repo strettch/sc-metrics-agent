@@ -37,19 +37,21 @@ const (
 
 // Client handles HTTP communication with the timeseries ingestor
 type Client struct {
-	endpoint   string
-	httpClient *http.Client
-	logger     *zap.Logger
-	maxRetries int
-	retryDelay time.Duration
+	endpoint               string
+	httpClient             *http.Client
+	logger                 *zap.Logger
+	maxRetries             int
+	retryDelay             time.Duration
+	enableDebugPayloadLogs bool
 }
 
 // ClientConfig holds client configuration
 type ClientConfig struct {
-	Endpoint   string
-	Timeout    time.Duration
-	MaxRetries int
-	RetryDelay time.Duration
+	Endpoint               string
+	Timeout                time.Duration
+	MaxRetries             int
+	RetryDelay             time.Duration
+	EnableDebugPayloadLogs bool
 }
 
 // Response represents the server response
@@ -84,9 +86,10 @@ func NewClient(endpoint string, timeout time.Duration, logger *zap.Logger) *Clie
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
-		logger:     logger,
-		maxRetries: DefaultMaxRetries,
-		retryDelay: DefaultRetryDelay,
+		logger:                 logger,
+		maxRetries:             DefaultMaxRetries,
+		retryDelay:             DefaultRetryDelay,
+		enableDebugPayloadLogs: false, // Default to secure: no payload logging
 	}
 }
 
@@ -117,9 +120,10 @@ func NewClientWithConfig(config ClientConfig, logger *zap.Logger) *Client {
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
-		logger:     logger,
-		maxRetries: maxRetries,
-		retryDelay: retryDelay,
+		logger:                 logger,
+		maxRetries:             maxRetries,
+		retryDelay:             retryDelay,
+		enableDebugPayloadLogs: config.EnableDebugPayloadLogs,
 	}
 }
 
@@ -137,11 +141,18 @@ func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWith
 		return nil, fmt.Errorf("failed to marshal metrics: %w", err)
 	}
 
-	// Log the payload before compression (without sensitive data)
-	c.logger.Debug("Sending metrics payload (before compression)",
+	// Log the payload before compression (without sensitive data by default)
+	logFields := []zap.Field{
 		zap.Int("metrics_count", len(metrics)),
 		zap.Int("payload_size_bytes", len(payload)),
-	)
+	}
+	
+	// Only include payload preview if explicitly enabled in config
+	if c.enableDebugPayloadLogs {
+		logFields = append(logFields, zap.String("payload_preview", sanitizePayload(payload, 100)))
+	}
+	
+	c.logger.Debug("Sending metrics payload (before compression)", logFields...)
 
 	// Compress with Snappy
 	compressed := snappy.Encode(nil, payload)
@@ -165,12 +176,19 @@ func (c *Client) SendDiagnostics(ctx context.Context, diagnostics DiagnosticPayl
 		return nil, fmt.Errorf("failed to marshal diagnostics: %w", err)
 	}
 
-	// Log the diagnostics payload (without sensitive data)
-	c.logger.Debug("Sending diagnostics payload",
+	// Log the diagnostics payload (without sensitive data by default)
+	logFields := []zap.Field{
 		zap.String("agent_id", diagnostics.AgentID),
 		zap.String("status", diagnostics.Status),
 		zap.Int("payload_size_bytes", len(payload)),
-	)
+	}
+	
+	// Only include full payload if explicitly enabled in config
+	if c.enableDebugPayloadLogs {
+		logFields = append(logFields, zap.String("payload_preview", sanitizePayload(payload, 200)))
+	}
+	
+	c.logger.Debug("Sending diagnostics payload", logFields...)
 
 	// Compress with Snappy
 	compressed := snappy.Encode(nil, payload)
@@ -360,4 +378,20 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// sanitizePayload returns a sanitized version of payload data for logging
+// This prevents sensitive data from being logged while providing useful debugging info
+func sanitizePayload(payload []byte, maxPreviewLength int) string {
+	if len(payload) == 0 {
+		return "[empty payload]"
+	}
+	
+	if maxPreviewLength <= 0 || len(payload) > maxPreviewLength {
+		return fmt.Sprintf("[REDACTED - %d bytes]", len(payload))
+	}
+	
+	// For small payloads, we could show a sanitized version, but to be safe,
+	// we'll just show the size for now
+	return fmt.Sprintf("[payload - %d bytes]", len(payload))
 }

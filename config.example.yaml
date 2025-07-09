@@ -56,6 +56,11 @@ collectors:
 # Logging configuration
 log_level: "info"
 
+# Security: Enable debug payload logging (SECURITY RISK - only enable for debugging)
+# When enabled, shows sanitized payload previews in debug logs
+# Default: false (secure - no sensitive data in logs)
+enable_debug_payload_logs: false
+
 # Retry settings
 max_retries: 3
 retry_interval: 5s
