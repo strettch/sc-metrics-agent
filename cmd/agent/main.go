@@ -85,10 +85,11 @@ func main() {
 	
 	// Create HTTP client for metric writing
 	clientConfig := tsclient.ClientConfig{
-		Endpoint:   cfg.IngestorEndpoint,
-		Timeout:    cfg.HTTPTimeout,
-		MaxRetries: cfg.MaxRetries,
-		RetryDelay: cfg.RetryInterval,
+		Endpoint:               cfg.IngestorEndpoint,
+		Timeout:                cfg.HTTPTimeout,
+		MaxRetries:             cfg.MaxRetries,
+		RetryDelay:             cfg.RetryInterval,
+		EnableDebugPayloadLogs: cfg.EnableDebugPayloadLogs,
 	}
 	httpClient := tsclient.NewClientWithConfig(clientConfig, logger)
 	metricWriter := tsclient.NewMetricWriter(httpClient, logger)

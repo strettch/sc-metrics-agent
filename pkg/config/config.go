@@ -30,7 +30,8 @@ type Config struct {
 	Collectors CollectorConfig `yaml:"collectors" json:"collectors"`
 
 	// Logging
-	LogLevel string `yaml:"log_level" json:"log_level"`
+	LogLevel                string `yaml:"log_level" json:"log_level"`
+	EnableDebugPayloadLogs  bool   `yaml:"enable_debug_payload_logs" json:"enable_debug_payload_logs"`
 
 	// Rate limiting
 	MaxRetries    int           `yaml:"max_retries" json:"max_retries"`
@@ -122,9 +123,10 @@ func DefaultConfig() *Config {
 			Pressure:  true,
 			Schedstat: true,
 		},
-		LogLevel:      "info",
-		MaxRetries:    3,
-		RetryInterval: 5 * time.Second,
+		LogLevel:               "info",
+		EnableDebugPayloadLogs: false,  // Default to secure: no sensitive payload logging
+		MaxRetries:             3,
+		RetryInterval:          5 * time.Second,
 	}
 }
 
@@ -144,7 +146,7 @@ func getVMIDFromDMIDecode() string {
 	}
 
 	if err != nil {
-		log.Printf("Error getting VM ID: dmidecode command failed: %v. Output: %s", err, string(output))
+		log.Printf("Error getting VM ID: dmidecode command failed: %v", err)
 		return ""
 	}
 
@@ -214,6 +216,12 @@ func (c *Config) loadFromEnv() {
 
 	if val := os.Getenv("SC_LOG_LEVEL"); val != "" {
 		c.LogLevel = val
+	}
+
+	if val := os.Getenv("SC_ENABLE_DEBUG_PAYLOAD_LOGS"); val != "" {
+		if enabled, err := strconv.ParseBool(val); err == nil {
+			c.EnableDebugPayloadLogs = enabled
+		}
 	}
 
 	if val := os.Getenv("SC_MAX_RETRIES"); val != "" {
@@ -383,7 +391,7 @@ func (c *Config) validate() error {
 	}
 
 	if c.VMID == "" {
-		return fmt.Errorf("vm_id cannot be determined: dmidecode failed, /etc/machine-id unavailable, /proc/sys/kernel/random/boot_id unavailable, and hostname unavailable. Please set vm_id manually in config or SC_VM_ID environment variable")
+		return fmt.Errorf("vm_id cannot be determined. Please set vm_id manually in config or SC_VM_ID environment variable")
 	}
 
 	if c.MaxRetries < 0 {
@@ -428,6 +436,6 @@ func (c *Config) hasEnabledCollectors() bool {
 
 // String returns a string representation of the config (excluding sensitive data)
 func (c *Config) String() string {
-	return fmt.Sprintf("Config{CollectionInterval:%v, IngestorEndpoint:%s, VMID:%s, LogLevel:%s, Collectors:%+v}",
-		c.CollectionInterval, c.IngestorEndpoint, c.VMID, c.LogLevel, c.Collectors)
+	return fmt.Sprintf("Config{CollectionInterval:%v, IngestorEndpoint:%s, VMID:%s, LogLevel:%s, EnableDebugPayloadLogs:%v, Collectors:%+v}",
+		c.CollectionInterval, c.IngestorEndpoint, c.VMID, c.LogLevel, c.EnableDebugPayloadLogs, c.Collectors)
 }
