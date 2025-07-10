@@ -100,8 +100,17 @@ SNAPSHOT_NAME="${PACKAGE_NAME}-${PACKAGE_VERSION}"
 sudo aptly snapshot create "${SNAPSHOT_NAME}" from repo sc-metrics-agent-repo
 
 echo "Publishing new snapshot to distributions: ${DISTRIBUTIONS}"
+# Check if GPG passphrase file exists, otherwise use empty passphrase
+if [ -f "/root/gpg-passphrase.txt" ]; then
+    PASSPHRASE_OPTION="-passphrase-file=/root/gpg-passphrase.txt"
+else
+    echo "Warning: No GPG passphrase file found at /root/gpg-passphrase.txt, using empty passphrase"
+    PASSPHRASE_OPTION="-passphrase="
+fi
+
 for dist in ${DISTRIBUTIONS}; do
-    sudo aptly publish snapshot -gpg-key="${GPG_EMAIL}" -distribution="${dist}" "${SNAPSHOT_NAME}"
+    sudo aptly publish snapshot -gpg-key="${GPG_EMAIL}" -distribution="${dist}" \
+        -batch -pinentry-mode=loopback ${PASSPHRASE_OPTION} "${SNAPSHOT_NAME}"
 done
 
 echo "--- [Step 6/7] Configuring web server and generating client install script..."
