@@ -12,7 +12,7 @@ echo "Configuring ${SERVICE_NAME}..."
 
 # Validate configuration before proceeding
 echo "Validating configuration..."
-if ! "${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}"; then
+if ! "/usr/local/bin/${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}"; then
     echo "ERROR: Configuration validation failed"
     echo "Post-install aborted - configuration is invalid"
     exit 1

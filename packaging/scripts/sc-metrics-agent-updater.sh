@@ -40,7 +40,7 @@ apt-get install -y "${PACKAGE_NAME}"
 
 # Validate new configuration (the binary should have --validate-config flag)
 echo "Validating configuration..."
-if ! "${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}"; then
+if ! "/usr/local/bin/${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}"; then
     echo "ERROR: Configuration validation failed"
     echo "Update aborted - configuration is invalid"
     exit 1
