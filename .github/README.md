@@ -64,19 +64,51 @@ The following GitHub secrets must be configured:
 
 The repository server must have the following setup:
 
-1. **GPG Passphrase File** (to fix automation):
-   ```bash
-   echo "your_gpg_passphrase" > /root/gpg-passphrase.txt
-   chmod 600 /root/gpg-passphrase.txt
-   ```
+### 1. GPG Agent Configuration (Required)
+Configure GPG agent for batch mode automation:
+```bash
+# Create or update GPG agent config
+mkdir -p /root/.gnupg
+cat > /root/.gnupg/gpg-agent.conf << EOF
+allow-loopback-pinentry
+pinentry-program /usr/bin/pinentry-tty
+default-cache-ttl 3600
+max-cache-ttl 3600
+EOF
 
-2. **Project Directory**:
-   ```bash
-   cd /root/sc-metrics-agent
-   # The existing setup_repo.sh script must be present here
-   ```
+# Restart GPG agent
+gpg-connect-agent reloadagent /bye
+```
 
-3. **Dependencies**: All dependencies for `setup_repo.sh` (aptly, gpg, etc.)
+### 2. GPG Passphrase File (Option A - Recommended)
+Create passphrase file for existing GPG key:
+```bash
+echo "your_gpg_passphrase" > /root/gpg-passphrase.txt
+chmod 600 /root/gpg-passphrase.txt
+```
+
+### 3. No-Passphrase GPG Key (Option B - Alternative)
+Create a GPG key without passphrase for automation:
+```bash
+gpg --batch --gen-key <<EOF
+Key-Type: RSA
+Key-Length: 2048
+Name-Real: Engineering Team
+Name-Email: engineering@strettch.com
+Expire-Date: 0
+%no-protection
+%commit
+EOF
+```
+
+### 4. Project Directory
+```bash
+cd /root/sc-metrics-agent
+# The existing setup_repo.sh script must be present here
+```
+
+### 5. Dependencies
+All dependencies for `setup_repo.sh` (aptly, gpg, caddy, etc.)
 
 ## Scripts
 
