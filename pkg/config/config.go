@@ -130,7 +130,7 @@ func DefaultConfig() *Config {
 
 // getVMIDFromDMIDecode attempts to get VM ID from dmidecode
 func getVMIDFromDMIDecode() string {
-	// Try dmidecode with different paths. This is the primary method.
+	// Only use dmidecode - no other VM ID sources
 	// Set a timeout for the command to prevent indefinite hangs.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -143,29 +143,33 @@ func getVMIDFromDMIDecode() string {
 	}
 
 	for _, dmidecodeCmd := range dmidecodePaths {
+		log.Printf("DEBUG: Trying dmidecode at: %s", dmidecodeCmd)
 		cmd := exec.CommandContext(ctx, dmidecodeCmd, "-s", "system-uuid")
 		output, err := cmd.Output()
 
 		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("Error getting VM ID: dmidecode command timed out")
+			log.Printf("ERROR: dmidecode command timed out at %s", dmidecodeCmd)
 			return ""
 		}
 
 		if err != nil {
-			log.Printf("Error getting VM ID: dmidecode command failed with %s: %v. Output: %s", dmidecodeCmd, err, string(output))
+			log.Printf("ERROR: dmidecode command failed with %s: %v. Output: %s", dmidecodeCmd, err, string(output))
 			continue // Try next path
 		}
 
 		vmID := strings.TrimSpace(string(output))
+		log.Printf("DEBUG: dmidecode at %s returned: '%s'", dmidecodeCmd, vmID)
+		
 		// Check for common invalid or unset dmidecode outputs
 		if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" && !strings.HasPrefix(vmID, "00000000-0000-0000") {
+			log.Printf("SUCCESS: Using VM ID from dmidecode: %s", vmID)
 			return vmID
 		}
 
-		log.Printf("Warning: dmidecode at %s returned an invalid or empty VM ID: '%s'", dmidecodeCmd, vmID)
+		log.Printf("WARNING: dmidecode at %s returned invalid VM ID: '%s'", dmidecodeCmd, vmID)
 	}
 
-	log.Printf("Warning: dmidecode not found or failed at all attempted paths")
+	log.Printf("ERROR: dmidecode not found or failed at all attempted paths")
 	return ""
 }
 
@@ -394,7 +398,7 @@ func (c *Config) validate() error {
 	}
 
 	if c.VMID == "" {
-		return fmt.Errorf("vm_id cannot be determined: dmidecode failed, /etc/machine-id unavailable, /proc/sys/kernel/random/boot_id unavailable, and hostname unavailable. Please set vm_id manually in config or SC_VM_ID environment variable")
+		return fmt.Errorf("vm_id cannot be determined: dmidecode failed to return a valid UUID. Please set vm_id manually in config.yaml or use SC_VM_ID environment variable")
 	}
 
 	if c.MaxRetries < 0 {
