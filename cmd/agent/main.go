@@ -31,7 +31,9 @@ var (
 // validateConfigFile validates a configuration file without running the agent
 func validateConfigFile(configPath string) error {
 	// Set the config path environment variable so config.Load() uses it
-	os.Setenv("SC_AGENT_CONFIG", configPath)
+	if err := os.Setenv("SC_AGENT_CONFIG", configPath); err != nil {
+		return fmt.Errorf("failed to set config path: %w", err)
+	}
 	
 	// Load and validate the configuration
 	_, err := config.Load()
@@ -84,7 +86,11 @@ func main() {
 	}
 	// Initialize logger
 	logger := initLogger("info")
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
+		}
+	}()
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -103,7 +109,11 @@ func main() {
 	// Update log level from config
 	if cfg.LogLevel != "info" {
 		logger = initLogger(cfg.LogLevel)
-		defer logger.Sync()
+		defer func() {
+			if err := logger.Sync(); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to sync logger: %v\n", err)
+			}
+		}()
 	}
 
 	logger.Info("Starting SC metrics agent",

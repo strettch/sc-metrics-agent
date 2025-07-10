@@ -24,25 +24,15 @@ func TestNewSystemCollector(t *testing.T) {
 		{
 			name: "all collectors enabled",
 			config: config.CollectorConfig{
-				Processes:  true,
 				CPU:        true,
-				CPUFreq:    true,
 				LoadAvg:    true,
 				Memory:     true,
-				VMStat:     true,
 				DiskStats:  true,
 				Filesystem: true,
 				NetDev:     true,
-				NetStat:    true,
-				Sockstat:   true,
-				Uptime:     true,
-				Time:       true,
-				Entropy:    true,
-				Interrupts: true,
-				Uname:      true,
 			},
-			expectError: true, // Will fail on non-Linux systems
-			expectedCollectors: 16,
+			expectError: true, // Will fail on non-Linux due to /proc dependency
+			expectedCollectors: 6,
 		},
 		{
 			name: "minimal config",
@@ -50,7 +40,7 @@ func TestNewSystemCollector(t *testing.T) {
 				CPU:    true,
 				Memory: true,
 			},
-			expectError: true, // Will fail on non-Linux systems
+			expectError: true, // Will fail on non-Linux due to /proc dependency
 			expectedCollectors: 2,
 		},
 		{
@@ -188,14 +178,14 @@ func TestCollectorConfigValidation(t *testing.T) {
 		{
 			name:        "empty config",
 			config:      config.CollectorConfig{},
-			expectError: true, // Will fail due to no collectors or /proc
+			expectError: true, // Will fail due to no collectors enabled
 		},
 		{
 			name: "valid single collector",
 			config: config.CollectorConfig{
 				CPU: true,
 			},
-			expectError: true, // Will fail due to /proc on non-Linux
+			expectError: true, // Will fail on non-Linux due to /proc dependency
 		},
 	}
 	
@@ -258,7 +248,9 @@ func BenchmarkSystemCollectorCreation(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		collector, err := NewSystemCollector(cfg, logger)
 		if err == nil {
-			collector.Close()
+			if closeErr := collector.Close(); closeErr != nil {
+				b.Errorf("Failed to close collector: %v", closeErr)
+			}
 		}
 	}
 }
@@ -301,7 +293,11 @@ func TestCollectorRegistry(t *testing.T) {
 	if err != nil {
 		t.Skip("Skipping test on non-Linux system")
 	}
-	defer collector.Close()
+	defer func() {
+		if closeErr := collector.Close(); closeErr != nil {
+			t.Errorf("Failed to close collector: %v", closeErr)
+		}
+	}()
 	
 	// Test that the registry is not nil and contains some metrics
 	// This is implicit through successful collector creation
