@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -27,12 +28,58 @@ var (
 	buildTime = "unknown"
 )
 
+// validateConfigFile validates a configuration file without running the agent
+func validateConfigFile(configPath string) error {
+	// Set the config path environment variable so config.Load() uses it
+	os.Setenv("SC_AGENT_CONFIG", configPath)
+	
+	// Load and validate the configuration
+	_, err := config.Load()
+	return err
+}
+
+// checkForUpdates checks if updates are available for the agent
+func checkForUpdates(logger *zap.Logger) {
+	cmd := exec.Command("apt", "list", "--upgradable", "sc-metrics-agent")
+	output, err := cmd.Output()
+	
+	if err != nil {
+		logger.Debug("Failed to check for updates", zap.Error(err))
+		return
+	}
+	
+	// Check if sc-metrics-agent is in the upgradable list
+	if strings.Contains(string(output), "sc-metrics-agent") {
+		logger.Info("Update available for sc-metrics-agent, triggering updater service")
+		
+		// Trigger the external updater service
+		cmd = exec.Command("systemctl", "start", "sc-metrics-agent-updater.service")
+		if err := cmd.Run(); err != nil {
+			logger.Error("Failed to trigger updater service", zap.Error(err))
+		} else {
+			logger.Info("Update service triggered successfully")
+		}
+	} else {
+		logger.Debug("No updates available")
+	}
+}
+
 func main() {
 	versionFlag := flag.Bool("v", false, "Print version and exit")
+	validateConfigFlag := flag.String("validate-config", "", "Validate configuration file and exit")
 	flag.Parse()
 
 	if *versionFlag {
 		fmt.Printf("Version: %s\nCommit: %s\nBuildTime: %s\n", version, commit, buildTime)
+		os.Exit(0)
+	}
+
+	if *validateConfigFlag != "" {
+		if err := validateConfigFile(*validateConfigFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "Configuration validation failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Configuration is valid")
 		os.Exit(0)
 	}
 	// Initialize logger
@@ -106,6 +153,10 @@ func main() {
 	ticker := time.NewTicker(cfg.CollectionInterval)
 	defer ticker.Stop()
 
+	// Start update check loop (check every hour)
+	updateTicker := time.NewTicker(1 * time.Hour)
+	defer updateTicker.Stop()
+
 	logger.Info("Agent started successfully")
 
 	// Simple main execution loop
@@ -115,6 +166,9 @@ func main() {
 			if err := pipelineProcessor.Process(ctx); err != nil {
 				logger.Error("Failed to process metrics pipeline", zap.Error(err))
 			}
+
+		case <-updateTicker.C:
+			checkForUpdates(logger)
 
 		case sig := <-sigChan:
 			logger.Info("Received shutdown signal, cleaning up", zap.String("signal", sig.String()))

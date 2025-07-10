@@ -11,6 +11,12 @@ ingestor_endpoint: "https://api.cloud.strettch.dev/resource-manager/api/v1/metri
 # Agent identification - VM ID will be automatically detected if not specified
 vm_id: ""
 
+# Auto-update settings
+auto_update:
+  enabled: true
+  check_interval: "1h"
+  channel: "stable"  # Options: "stable", "beta"
+
 # Additional labels to attach to all metrics
 labels:
   environment: "production"
