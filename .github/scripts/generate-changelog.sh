@@ -39,18 +39,28 @@ generate_contributors() {
     
     if [[ -z "$from_ref" ]]; then
         # No previous tag, get all contributors
-        contributors=$(git log --pretty=format:"%an <%ae>" "$to_ref" | sort -u)
+        raw_contributors=$(git log --pretty=format:"%an|%ae" "$to_ref" | sort -u)
     else
         # Get contributors between two refs
-        contributors=$(git log --pretty=format:"%an <%ae>" "${from_ref}..${to_ref}" | sort -u)
+        raw_contributors=$(git log --pretty=format:"%an|%ae" "${from_ref}..${to_ref}" | sort -u)
     fi
     
-    if [[ -n "$contributors" ]]; then
+    if [[ -n "$raw_contributors" ]]; then
         echo "### Contributors"
         echo ""
-        while IFS= read -r contributor; do
-            echo "- $contributor"
-        done <<< "$contributors"
+        while IFS='|' read -r name email; do
+            # Convert GitHub noreply emails to @username format
+            if [[ "$email" =~ ^[0-9]+\+([^@]+)@users\.noreply\.github\.com$ ]]; then
+                username="${BASH_REMATCH[1]}"
+                echo "- $name (@$username)"
+            elif [[ "$email" =~ ^([^@]+)@users\.noreply\.github\.com$ ]]; then
+                username="${BASH_REMATCH[1]}"
+                echo "- $name (@$username)"
+            else
+                # For non-GitHub emails, just show the name
+                echo "- $name"
+            fi
+        done <<< "$raw_contributors"
         echo ""
     fi
 }
