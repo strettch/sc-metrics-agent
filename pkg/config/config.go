@@ -130,31 +130,42 @@ func DefaultConfig() *Config {
 
 // getVMIDFromDMIDecode attempts to get VM ID from dmidecode
 func getVMIDFromDMIDecode() string {
-	// Try dmidecode first. This is the primary method.
+	// Try dmidecode with different paths. This is the primary method.
 	// Set a timeout for the command to prevent indefinite hangs.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "dmidecode", "-s", "system-uuid")
-	output, err := cmd.Output()
-
-	if ctx.Err() == context.DeadlineExceeded {
-		log.Printf("Error getting VM ID: dmidecode command timed out")
-		return ""
+	// Try common dmidecode locations in order of preference
+	dmidecodePaths := []string{
+		"/usr/sbin/dmidecode", // Most common location
+		"/sbin/dmidecode",     // Alternative location
+		"dmidecode",           // Fallback to PATH
 	}
 
-	if err != nil {
-		log.Printf("Error getting VM ID: dmidecode command failed: %v. Output: %s", err, string(output))
-		return ""
+	for _, dmidecodeCmd := range dmidecodePaths {
+		cmd := exec.CommandContext(ctx, dmidecodeCmd, "-s", "system-uuid")
+		output, err := cmd.Output()
+
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("Error getting VM ID: dmidecode command timed out")
+			return ""
+		}
+
+		if err != nil {
+			log.Printf("Error getting VM ID: dmidecode command failed with %s: %v. Output: %s", dmidecodeCmd, err, string(output))
+			continue // Try next path
+		}
+
+		vmID := strings.TrimSpace(string(output))
+		// Check for common invalid or unset dmidecode outputs
+		if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" && !strings.HasPrefix(vmID, "00000000-0000-0000") {
+			return vmID
+		}
+
+		log.Printf("Warning: dmidecode at %s returned an invalid or empty VM ID: '%s'", dmidecodeCmd, vmID)
 	}
 
-	vmID := strings.TrimSpace(string(output))
-	// Check for common invalid or unset dmidecode outputs
-	if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" && !strings.HasPrefix(vmID, "00000000-0000-0000") {
-		return vmID
-	}
-
-	log.Printf("Warning: dmidecode returned an invalid or empty VM ID: '%s'", vmID)
+	log.Printf("Warning: dmidecode not found or failed at all attempted paths")
 	return ""
 }
 
