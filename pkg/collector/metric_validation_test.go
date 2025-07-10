@@ -5,9 +5,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/strettch/sc-metrics-agent/pkg/config"
 )
+
+const skipMessageNonLinuxValidation = "Skipping test on non-Linux system"
 
 // ResourceManagerSupportedMetrics defines the exact whitelist of metrics 
 // supported by the resource-manager as defined in metrics_dto.go:mapMetricNameToTypeAndUnit
@@ -68,7 +72,7 @@ func TestCollectorGeneratesOnlySupportedMetrics(t *testing.T) {
 
 	collector, err := NewSystemCollector(cfg, logger)
 	if err != nil {
-		t.Skip("Skipping test on non-Linux system (cannot access /proc)")
+		t.Skip(skipMessageNonLinuxValidation + " (cannot access /proc)")
 	}
 	defer func() {
 		if closeErr := collector.Close(); closeErr != nil {
@@ -113,20 +117,16 @@ func TestCollectorGeneratesOnlySupportedMetrics(t *testing.T) {
 		len(supportedMetricsFound), supportedMetricsFound)
 }
 
-// TestIndividualCollectorMetricCompliance tests each collector type individually
-// to ensure they only generate supported metrics
-func TestIndividualCollectorMetricCompliance(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping integration test")
-	}
+// collectorTestCase represents a test case for individual collector testing
+type collectorTestCase struct {
+	name             string
+	config           config.CollectorConfig
+	expectedMetrics  []string
+}
 
-	logger := zaptest.NewLogger(t)
-
-	testCases := []struct {
-		name             string
-		config           config.CollectorConfig
-		expectedMetrics  []string
-	}{
+// getCollectorTestCases returns test cases for individual collector compliance testing
+func getCollectorTestCases() []collectorTestCase {
+	return []collectorTestCase{
 		{
 			name: "CPU collector",
 			config: config.CollectorConfig{CPU: true},
@@ -182,53 +182,74 @@ func TestIndividualCollectorMetricCompliance(t *testing.T) {
 			},
 		},
 	}
+}
+
+// validateCollectorMetrics validates that collector metrics are supported and expected
+func validateCollectorMetrics(t *testing.T, metricFamilies []*dto.MetricFamily, tc collectorTestCase) {
+	foundMetrics := make(map[string]bool)
+	var unsupportedMetrics []string
+
+	for _, family := range metricFamilies {
+		metricName := family.GetName()
+		foundMetrics[metricName] = true
+
+		if !ResourceManagerSupportedMetrics[metricName] {
+			unsupportedMetrics = append(unsupportedMetrics, metricName)
+		}
+	}
+
+	// CRITICAL: No unsupported metrics allowed
+	assert.Empty(t, unsupportedMetrics, 
+		"Collector %s generated unsupported metrics: %v", tc.name, unsupportedMetrics)
+
+	// Verify we got the expected metrics (at least some of them, as exact metrics depend on system)
+	foundExpectedCount := 0
+	for _, expectedMetric := range tc.expectedMetrics {
+		if foundMetrics[expectedMetric] {
+			foundExpectedCount++
+		}
+	}
+
+	assert.Greater(t, foundExpectedCount, 0, 
+		"Expected to find at least one of the expected metrics %v", tc.expectedMetrics)
+}
+
+// testSingleCollectorCompliance tests a single collector for metric compliance
+func testSingleCollectorCompliance(t *testing.T, tc collectorTestCase, logger *zap.Logger) {
+	collector, err := NewSystemCollector(tc.config, logger)
+	if err != nil {
+		t.Skip(skipMessageNonLinuxValidation)
+	}
+	defer func() {
+		if closeErr := collector.Close(); closeErr != nil {
+			t.Logf("Failed to close collector: %v", closeErr)
+		}
+	}()
+
+	// Collect metrics
+	ctx := context.Background()
+	metricFamilies, err := collector.Collect(ctx)
+	if err != nil {
+		t.Skip("Skipping test due to collection error")
+	}
+
+	// Validate metrics
+	validateCollectorMetrics(t, metricFamilies, tc)
+}
+
+// TestIndividualCollectorMetricCompliance tests each collector type individually
+// to ensure they only generate supported metrics
+func TestIndividualCollectorMetricCompliance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test")
+	}
+
+	logger := zaptest.NewLogger(t)
+	testCases := getCollectorTestCases()
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			collector, err := NewSystemCollector(tc.config, logger)
-			if err != nil {
-				t.Skip("Skipping test on non-Linux system")
-			}
-			defer func() {
-				if closeErr := collector.Close(); closeErr != nil {
-					t.Logf("Failed to close collector: %v", closeErr)
-				}
-			}()
-
-			// Collect metrics
-			ctx := context.Background()
-			metricFamilies, err := collector.Collect(ctx)
-			if err != nil {
-				t.Skip("Skipping test due to collection error")
-			}
-
-			// Validate metrics
-			foundMetrics := make(map[string]bool)
-			var unsupportedMetrics []string
-
-			for _, family := range metricFamilies {
-				metricName := family.GetName()
-				foundMetrics[metricName] = true
-
-				if !ResourceManagerSupportedMetrics[metricName] {
-					unsupportedMetrics = append(unsupportedMetrics, metricName)
-				}
-			}
-
-			// CRITICAL: No unsupported metrics allowed
-			assert.Empty(t, unsupportedMetrics, 
-				"Collector %s generated unsupported metrics: %v", tc.name, unsupportedMetrics)
-
-			// Verify we got the expected metrics (at least some of them, as exact metrics depend on system)
-			foundExpectedCount := 0
-			for _, expectedMetric := range tc.expectedMetrics {
-				if foundMetrics[expectedMetric] {
-					foundExpectedCount++
-				}
-			}
-
-			assert.Greater(t, foundExpectedCount, 0, 
-				"Expected to find at least one of the expected metrics %v", tc.expectedMetrics)
+			testSingleCollectorCompliance(t, tc, logger)
 		})
 	}
 }
