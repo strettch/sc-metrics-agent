@@ -8,6 +8,10 @@ jobs:
   beta-release:
     name: Build and Deploy Beta Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required for creating releases
+      actions: read    # Required for downloading artifacts
+      checks: read     # Required for status checks
     
     steps:
     - name: Checkout code
