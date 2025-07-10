@@ -143,33 +143,30 @@ func getVMIDFromDMIDecode() string {
 	}
 
 	for _, dmidecodeCmd := range dmidecodePaths {
-		log.Printf("DEBUG: Trying dmidecode at: %s", dmidecodeCmd)
 		cmd := exec.CommandContext(ctx, dmidecodeCmd, "-s", "system-uuid")
 		output, err := cmd.Output()
 
 		if ctx.Err() == context.DeadlineExceeded {
-			log.Printf("ERROR: dmidecode command timed out at %s", dmidecodeCmd)
+			log.Printf("dmidecode command timed out")
 			return ""
 		}
 
 		if err != nil {
-			log.Printf("ERROR: dmidecode command failed with %s: %v. Output: %s", dmidecodeCmd, err, string(output))
+			log.Printf("dmidecode failed with %s: %v", dmidecodeCmd, err)
 			continue // Try next path
 		}
 
 		vmID := strings.TrimSpace(string(output))
-		log.Printf("DEBUG: dmidecode at %s returned: '%s'", dmidecodeCmd, vmID)
 		
 		// Check for common invalid or unset dmidecode outputs
 		if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" && !strings.HasPrefix(vmID, "00000000-0000-0000") {
-			log.Printf("SUCCESS: Using VM ID from dmidecode: %s", vmID)
 			return vmID
 		}
 
-		log.Printf("WARNING: dmidecode at %s returned invalid VM ID: '%s'", dmidecodeCmd, vmID)
+		log.Printf("dmidecode at %s returned invalid VM ID: '%s'", dmidecodeCmd, vmID)
 	}
 
-	log.Printf("ERROR: dmidecode not found or failed at all attempted paths")
+	log.Printf("dmidecode not found or failed at all attempted paths")
 	return ""
 }
 
@@ -211,7 +208,6 @@ func (c *Config) loadFromFile(path string) error {
 
 	// If config file has empty vm_id, restore the detected one
 	if c.VMID == "" && detectedVMID != "" {
-		log.Printf("Config file has empty vm_id, using detected VM ID: %s", detectedVMID)
 		c.VMID = detectedVMID
 	}
 

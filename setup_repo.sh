@@ -156,13 +156,7 @@ log_and_run "Updating package list for \${PACKAGE_NAME}..." "apt-get update -o D
 
 log_and_run "Installing \${PACKAGE_NAME}..." "apt-get install -y \"\${PACKAGE_NAME}\"" "install \${PACKAGE_NAME}"
 echo
-echo "---"
 echo "✅ \${PACKAGE_NAME} was installed successfully!"
-echo "IMPORTANT: Please edit the configuration file to set your ingestor endpoint:"
-echo "   sudo nano \${CONFIG_FILE}"
-echo "After editing, restart the agent: sudo systemctl restart \${PACKAGE_NAME}"
-echo "To check status: systemctl status \${PACKAGE_NAME}"
-echo "---"
 exit 0
 EOF
 
