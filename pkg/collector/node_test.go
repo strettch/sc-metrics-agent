@@ -3,6 +3,8 @@ package collector
 import (
 	"context"
 	"fmt"
+	"os"
+	"runtime"
 	"testing"
 	"time"
 
@@ -12,8 +14,23 @@ import (
 	"github.com/strettch/sc-metrics-agent/pkg/config"
 )
 
+const skipMessageNonLinux = "Skipping test on non-Linux system"
+
+// isLinuxWithProc checks if we're running on Linux with accessible /proc filesystem
+func isLinuxWithProc() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	// Check if /proc is accessible
+	_, err := os.Stat("/proc")
+	return err == nil
+}
+
 func TestNewSystemCollector(t *testing.T) {
 	logger := zaptest.NewLogger(t)
+	
+	// Determine expected behavior based on platform
+	expectSuccess := isLinuxWithProc()
 	
 	tests := []struct {
 		name        string
@@ -24,25 +41,15 @@ func TestNewSystemCollector(t *testing.T) {
 		{
 			name: "all collectors enabled",
 			config: config.CollectorConfig{
-				Processes:  true,
 				CPU:        true,
-				CPUFreq:    true,
 				LoadAvg:    true,
 				Memory:     true,
-				VMStat:     true,
 				DiskStats:  true,
 				Filesystem: true,
 				NetDev:     true,
-				NetStat:    true,
-				Sockstat:   true,
-				Uptime:     true,
-				Time:       true,
-				Entropy:    true,
-				Interrupts: true,
-				Uname:      true,
 			},
-			expectError: true, // Will fail on non-Linux systems
-			expectedCollectors: 16,
+			expectError: !expectSuccess, // Success on Linux, error on non-Linux
+			expectedCollectors: 6,
 		},
 		{
 			name: "minimal config",
@@ -50,13 +57,13 @@ func TestNewSystemCollector(t *testing.T) {
 				CPU:    true,
 				Memory: true,
 			},
-			expectError: true, // Will fail on non-Linux systems
+			expectError: !expectSuccess, // Success on Linux, error on non-Linux
 			expectedCollectors: 2,
 		},
 		{
 			name:        "no collectors enabled",
 			config:      config.CollectorConfig{},
-			expectError: true,
+			expectError: true, // Always fails - no collectors enabled
 			expectedCollectors: 0,
 		},
 	}
@@ -93,7 +100,7 @@ func TestSystemCollectorInterface(t *testing.T) {
 	// This will fail on non-Linux, but we can test the interface
 	collector, err := NewSystemCollector(cfg, logger)
 	if err != nil {
-		t.Skip("Skipping test on non-Linux system")
+		t.Skip(skipMessageNonLinux)
 	}
 	
 	// Test context cancellation
@@ -113,7 +120,7 @@ func TestSystemCollectorTimeout(t *testing.T) {
 	
 	collector, err := NewSystemCollector(cfg, logger)
 	if err != nil {
-		t.Skip("Skipping test on non-Linux system")
+		t.Skip(skipMessageNonLinux)
 	}
 	
 	// Test with very short timeout
@@ -140,7 +147,7 @@ func TestGetEnabledCollectors(t *testing.T) {
 	
 	collector, err := NewSystemCollector(cfg, logger)
 	if err != nil {
-		t.Skip("Skipping test on non-Linux system")
+		t.Skip(skipMessageNonLinux)
 	}
 	
 	enabled := collector.GetEnabledCollectors()
@@ -169,7 +176,7 @@ func TestSystemCollectorClose(t *testing.T) {
 	
 	collector, err := NewSystemCollector(cfg, logger)
 	if err != nil {
-		t.Skip("Skipping test on non-Linux system")
+		t.Skip(skipMessageNonLinux)
 	}
 	
 	// Close should not return an error
@@ -180,6 +187,9 @@ func TestSystemCollectorClose(t *testing.T) {
 func TestCollectorConfigValidation(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	
+	// Determine expected behavior based on platform
+	expectLinuxSuccess := isLinuxWithProc()
+	
 	tests := []struct {
 		name        string
 		config      config.CollectorConfig
@@ -188,14 +198,14 @@ func TestCollectorConfigValidation(t *testing.T) {
 		{
 			name:        "empty config",
 			config:      config.CollectorConfig{},
-			expectError: true, // Will fail due to no collectors or /proc
+			expectError: true, // Always fails - no collectors enabled
 		},
 		{
 			name: "valid single collector",
 			config: config.CollectorConfig{
 				CPU: true,
 			},
-			expectError: true, // Will fail due to /proc on non-Linux
+			expectError: !expectLinuxSuccess, // Success on Linux with /proc, error otherwise
 		},
 	}
 	
@@ -204,9 +214,9 @@ func TestCollectorConfigValidation(t *testing.T) {
 			_, err := NewSystemCollector(tt.config, logger)
 			
 			if tt.expectError {
-				assert.Error(t, err, "Expected an error for config: %s", tt.name)
+				assert.Error(t, err, "Expected an error for config: %s (platform support: %v)", tt.name, expectLinuxSuccess)
 			} else {
-				assert.NoError(t, err)
+				assert.NoError(t, err, "Expected no error for config: %s (platform support: %v)", tt.name, expectLinuxSuccess)
 			}
 		})
 	}
@@ -255,10 +265,12 @@ func BenchmarkSystemCollectorCreation(b *testing.B) {
 	}
 	
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		collector, err := NewSystemCollector(cfg, logger)
 		if err == nil {
-			collector.Close()
+			if closeErr := collector.Close(); closeErr != nil {
+				b.Errorf("Failed to close collector: %v", closeErr)
+			}
 		}
 	}
 }
@@ -299,9 +311,13 @@ func TestCollectorRegistry(t *testing.T) {
 	
 	collector, err := NewSystemCollector(cfg, logger)
 	if err != nil {
-		t.Skip("Skipping test on non-Linux system")
+		t.Skip(skipMessageNonLinux)
 	}
-	defer collector.Close()
+	defer func() {
+		if closeErr := collector.Close(); closeErr != nil {
+			t.Errorf("Failed to close collector: %v", closeErr)
+		}
+	}()
 	
 	// Test that the registry is not nil and contains some metrics
 	// This is implicit through successful collector creation

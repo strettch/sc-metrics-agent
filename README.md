@@ -50,124 +50,67 @@ The agent follows a modular pipeline architecture:
 
 ### Prerequisites
 
--   Go (version 1.20 or later recommended)
--   A Linux system (for full metric collection capabilities)
--   Network connectivity to the metrics ingestor endpoint
--   Root privileges (recommended for complete system access and `dmidecode`)
+-   A Linux system (Ubuntu, Debian, or compatible)
+-   Root privileges for installation
+-   Network connectivity
 
-### Quick Install Script (Linux)
+### Stable Release (Recommended)
 
-For a fast installation on Linux systems, you can use the following command:
+For production deployments, install the stable release:
 
 ```bash
 curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash
 ```
 
-This script will download and install the latest version of the agent and set it up as a systemd service.
+### Beta Release
+
+For testing latest features, install the beta release:
+
+```bash
+curl -sSL https://repo.cloud.strettch.dev/beta/install.sh | sudo bash
+```
+
+The installation script will:
+- Add the repository to your package manager
+- Install the agent and configure it as a systemd service
+- Automatically detect your VM ID
+- Start the service immediately
+
+### Verify Installation
+
+Check that the agent is running:
+
+```bash
+sudo systemctl status sc-metrics-agent
+```
 
 ### Build from Source
+
+For developers who want to build from source:
 
 ```bash
 git clone https://github.com/strettch/sc-metrics-agent.git
 cd sc-metrics-agent
-go mod tidy # or go mod download
 make build
 ```
 
-This will produce an executable binary in the `build/` directory (e.g., `build/sc-agent`).
-
-### Systemd Service Setup (Recommended)
-
-For production deployments, running the agent as a systemd service is recommended.
-
-1.  **Copy the binary** to a standard location:
-    ```bash
-    sudo cp ./build/sc-agent /usr/local/bin/sc-metrics-agent
-    ```
-2.  **Create the configuration directory and file**:
-    ```bash
-    sudo mkdir -p /etc/sc-metrics-agent
-    sudo cp config.example.yaml /etc/sc-metrics-agent/config.yaml
-    # Edit /etc/sc-metrics-agent/config.yaml as needed
-    ```
-3.  **Copy the systemd service file**:
-    ```bash
-    sudo cp packaging/systemd/sc-metrics-agent.service /etc/systemd/system/
-    ```
-4.  **Reload systemd, enable, and start the service**:
-    ```bash
-    sudo systemctl daemon-reload
-    sudo systemctl enable sc-metrics-agent.service
-    sudo systemctl start sc-metrics-agent.service
-    ```
-5.  **Check the status**:
-    ```bash
-    sudo systemctl status sc-metrics-agent.service
-    sudo journalctl -u sc-metrics-agent.service -f
-    ```
-
 ## Configuration
 
-The agent can be configured via a YAML file or environment variables. Environment variables override YAML settings.
+The agent works out-of-the-box with sensible defaults. Advanced users can customize behavior through the configuration file at `/etc/sc-metrics-agent/config.yaml`.
 
-### Configuration File
+### Optional Configuration
 
-By default, the agent looks for `config.yaml` in the current directory or at `/etc/sc-metrics-agent/config.yaml` (when run as a service). An example configuration is provided in `config.example.yaml`.
+Key options you can customize:
 
-Key configuration options:
+-   `collection_interval`: How often to collect metrics (default: `30s`)
+-   `vm_id`: Manually set VM ID (auto-detected by default)
+-   `labels`: Custom key-value pairs to add to all metrics
+-   `collectors`: Enable/disable specific metric groups
+-   `log_level`: Logging verbosity (`info`, `debug`, etc.)
 
--   `collection_interval`: How often to collect metrics (e.g., `30s`).
--   `ingestor_endpoint`: The URL of your metrics ingestor.
--   `vm_id`: (Optional) Manually set the VM ID. If empty, the agent attempts auto-detection.
--   `labels`: Custom key-value pairs to add to all metrics.
--   `collectors`: A map to enable/disable specific metric groups (e.g., `cpu: true`).
--   `log_level`: Logging verbosity (`debug`, `info`, `warn`, `error`, `fatal`).
+### VM ID Detection
 
-### Environment Variables
-
--   `SC_AGENT_CONFIG`: Path to the configuration file.
--   `SC_COLLECTION_INTERVAL`: e.g., `60s`
--   `SC_INGESTOR_ENDPOINT`: e.g., `https://your-ingestor.com/api/metrics`
--   `SC_VM_ID`: Manually specify the VM ID.
--   `SC_LOG_LEVEL`: e.g., `debug`
--   `SC_LABEL_<KEY>`: For custom labels, e.g., `SC_LABEL_ENVIRONMENT=production`.
-
-### VM ID Detection and Troubleshooting
-
-The agent attempts to automatically determine a unique `vm_id` using the following methods in order:
-
-1.  `dmidecode -s system-uuid` (requires `dmidecode` to be installed and accessible, often needs root)
-2.  Contents of `/etc/machine-id`
-3.  Contents of `/proc/sys/kernel/random/boot_id`
-4.  The system's hostname
-
-If the agent fails to start with an error like `"Failed to load configuration - VM ID detection failed"`, it means none of these methods succeeded. This is common in minimal environments or containers where `dmidecode` is not present or `/etc/machine-id` is not unique/available.
-
-**Solution:**
-
-The systemd service file (`packaging/systemd/sc-metrics-agent.service`) has been updated to attempt to set the `SC_VM_ID` environment variable using `dmidecode` before starting the agent:
-
-```ini
-[Service]
-# ... other settings ...
-ExecStartPre=/bin/sh -c "echo SC_VM_ID=$(/usr/sbin/dmidecode -s system-uuid 2>/dev/null || echo 'unknown-vm-id') > /run/sc-metrics-agent.env"
-EnvironmentFile=/run/sc-metrics-agent.env
-ExecStart=/usr/local/bin/sc-metrics-agent
-Environment=SC_AGENT_CONFIG=/etc/sc-metrics-agent/config.yaml
-# ... other settings ...
-```
-
-This `ExecStartPre` line tries to get the UUID via `dmidecode`. If it fails (e.g., `dmidecode` not found or no permission), it defaults to `unknown-vm-id`. The output is written to `/run/sc-metrics-agent.env`, which is then sourced by `EnvironmentFile`.
-
-**To ensure this works:**
-
-1.  **Install `dmidecode`**: On Debian/Ubuntu: `sudo apt update && sudo apt install dmidecode`. On RHEL/CentOS: `sudo yum install dmidecode`.
-2.  Ensure the systemd service is reloaded and restarted after any changes: `sudo systemctl daemon-reload && sudo systemctl restart sc-metrics-agent.service`.
-
-If `dmidecode` is not an option, you can manually set `SC_VM_ID`:
-
-*   **In the systemd service file**: Add `Environment="SC_VM_ID=your-unique-id"`.
-*   **In the `config.yaml`**: Set `vm_id: "your-unique-id"`.
+The agent automatically detects your VM's unique identifier using `dmidecode`. This requires no configuration in most standard environments.
 
 ## Usage
 

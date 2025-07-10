@@ -71,6 +71,11 @@ cp build/${PACKAGE_NAME} "${STAGING_DIR}/usr/local/bin/"
 cp "${START_SCRIPT_SOURCE_PATH}" "${STAGING_DIR}/usr/local/bin/${START_SCRIPT_FILENAME}"
 chmod +x "${STAGING_DIR}/usr/local/bin/${START_SCRIPT_FILENAME}"
 # === End add start script ===
+# === Add updater script and service ===
+cp "packaging/scripts/${PACKAGE_NAME}-updater.sh" "${STAGING_DIR}/usr/local/bin/"
+chmod +x "${STAGING_DIR}/usr/local/bin/${PACKAGE_NAME}-updater.sh"
+cp "packaging/systemd/${PACKAGE_NAME}-updater.service" "${STAGING_DIR}/etc/systemd/system/"
+# === End add updater script and service ===
 cp config.example.yaml "${STAGING_DIR}/etc/${PACKAGE_NAME}/config.yaml"
 cp "${SERVICE_FILE}" "${STAGING_DIR}/etc/systemd/system/"
 chmod +x "${POSTINSTALL_SCRIPT}" "${PREREMOVE_SCRIPT}"
@@ -95,8 +100,29 @@ SNAPSHOT_NAME="${PACKAGE_NAME}-${PACKAGE_VERSION}"
 sudo aptly snapshot create "${SNAPSHOT_NAME}" from repo sc-metrics-agent-repo
 
 echo "Publishing new snapshot to distributions: ${DISTRIBUTIONS}"
+
+# Configure GPG environment for batch mode
+export GPG_TTY=$(tty)
+unset DISPLAY
+
+# Check if GPG passphrase file exists
+if [ -f "/root/gpg-passphrase.txt" ]; then
+    echo "Using GPG passphrase file for signing..."
+    PASSPHRASE_OPTION="-passphrase-file=/root/gpg-passphrase.txt"
+else
+    echo "Warning: No GPG passphrase file found at /root/gpg-passphrase.txt"
+    echo "Attempting to use key without passphrase..."
+    PASSPHRASE_OPTION=""
+fi
+
 for dist in ${DISTRIBUTIONS}; do
-    sudo aptly publish snapshot -gpg-key="${GPG_EMAIL}" -distribution="${dist}" "${SNAPSHOT_NAME}"
+    if [ -n "$PASSPHRASE_OPTION" ]; then
+        sudo aptly publish snapshot -gpg-key="${GPG_EMAIL}" -distribution="${dist}" \
+            -batch $PASSPHRASE_OPTION "${SNAPSHOT_NAME}"
+    else
+        sudo aptly publish snapshot -gpg-key="${GPG_EMAIL}" -distribution="${dist}" \
+            -batch "${SNAPSHOT_NAME}"
+    fi
 done
 
 echo "--- [Step 6/7] Configuring web server and generating client install script..."
@@ -151,13 +177,7 @@ log_and_run "Updating package list for \${PACKAGE_NAME}..." "apt-get update -o D
 
 log_and_run "Installing \${PACKAGE_NAME}..." "apt-get install -y \"\${PACKAGE_NAME}\"" "install \${PACKAGE_NAME}"
 echo
-echo "---"
 echo "✅ \${PACKAGE_NAME} was installed successfully!"
-echo "IMPORTANT: Please edit the configuration file to set your ingestor endpoint:"
-echo "   sudo nano \${CONFIG_FILE}"
-echo "After editing, restart the agent: sudo systemctl restart \${PACKAGE_NAME}"
-echo "To check status: systemctl status \${PACKAGE_NAME}"
-echo "---"
 exit 0
 EOF
 

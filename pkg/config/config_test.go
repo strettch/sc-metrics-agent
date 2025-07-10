@@ -35,8 +35,12 @@ func TestLoad_DefaultsOnly(t *testing.T) {
 	clearEnvVars()
 	
 	// Set test VM ID to avoid validation failure on test systems
-	os.Setenv("SC_VM_ID", "test-vm-default")
-	defer os.Unsetenv("SC_VM_ID")
+	require.NoError(t, os.Setenv("SC_VM_ID", "test-vm-default"))
+	defer func() {
+		if err := os.Unsetenv("SC_VM_ID"); err != nil {
+			t.Logf("Failed to unset SC_VM_ID: %v", err)
+		}
+	}()
 	
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -71,7 +75,7 @@ func TestLoad_FromEnvironment(t *testing.T) {
 	}
 	
 	for key, value := range testEnvVars {
-		os.Setenv(key, value)
+		require.NoError(t, os.Setenv(key, value))
 	}
 	defer clearEnvVars()
 	
@@ -108,12 +112,20 @@ retry_interval: 3s
 `
 	
 	tempFile := createTempConfigFile(t, configContent)
-	defer os.Remove(tempFile)
+	defer func() {
+		if err := os.Remove(tempFile); err != nil {
+			t.Logf("Failed to remove temp file: %v", err)
+		}
+	}()
 	
 	// Clear environment and set config file path
 	clearEnvVars()
-	os.Setenv("SC_AGENT_CONFIG", tempFile)
-	defer os.Unsetenv("SC_AGENT_CONFIG")
+	require.NoError(t, os.Setenv("SC_AGENT_CONFIG", tempFile))
+	defer func() {
+		if err := os.Unsetenv("SC_AGENT_CONFIG"); err != nil {
+			t.Logf("Failed to unset SC_AGENT_CONFIG: %v", err)
+		}
+	}()
 	
 	cfg, err := Load()
 	require.NoError(t, err)
@@ -140,17 +152,27 @@ log_level: "warn"
 `
 	
 	tempFile := createTempConfigFile(t, configContent)
-	defer os.Remove(tempFile)
+	defer func() {
+		if err := os.Remove(tempFile); err != nil {
+			t.Logf("Failed to remove temp file: %v", err)
+		}
+	}()
 	
 	// Clear environment and set both file and env vars
 	clearEnvVars()
-	os.Setenv("SC_AGENT_CONFIG", tempFile)
-	os.Setenv("SC_COLLECTION_INTERVAL", "120s")
-	os.Setenv("SC_VM_ID", "env-vm")
+	require.NoError(t, os.Setenv("SC_AGENT_CONFIG", tempFile))
+	require.NoError(t, os.Setenv("SC_COLLECTION_INTERVAL", "120s"))
+	require.NoError(t, os.Setenv("SC_VM_ID", "env-vm"))
 	defer func() {
-		os.Unsetenv("SC_AGENT_CONFIG")
-		os.Unsetenv("SC_COLLECTION_INTERVAL")
-		os.Unsetenv("SC_VM_ID")
+		if err := os.Unsetenv("SC_AGENT_CONFIG"); err != nil {
+			t.Logf("Failed to unset SC_AGENT_CONFIG: %v", err)
+		}
+		if err := os.Unsetenv("SC_COLLECTION_INTERVAL"); err != nil {
+			t.Logf("Failed to unset SC_COLLECTION_INTERVAL: %v", err)
+		}
+		if err := os.Unsetenv("SC_VM_ID"); err != nil {
+			t.Logf("Failed to unset SC_VM_ID: %v", err)
+		}
 	}()
 	
 	cfg, err := Load()
@@ -172,11 +194,19 @@ invalid_yaml: [unclosed bracket
 `
 	
 	tempFile := createTempConfigFile(t, invalidContent)
-	defer os.Remove(tempFile)
+	defer func() {
+		if err := os.Remove(tempFile); err != nil {
+			t.Logf("Failed to remove temp file: %v", err)
+		}
+	}()
 	
 	clearEnvVars()
-	os.Setenv("SC_AGENT_CONFIG", tempFile)
-	defer os.Unsetenv("SC_AGENT_CONFIG")
+	require.NoError(t, os.Setenv("SC_AGENT_CONFIG", tempFile))
+	defer func() {
+		if err := os.Unsetenv("SC_AGENT_CONFIG"); err != nil {
+			t.Logf("Failed to unset SC_AGENT_CONFIG: %v", err)
+		}
+	}()
 	
 	_, err := Load()
 	assert.Error(t, err)
@@ -185,8 +215,12 @@ invalid_yaml: [unclosed bracket
 
 func TestLoad_NonexistentConfigFile(t *testing.T) {
 	clearEnvVars()
-	os.Setenv("SC_AGENT_CONFIG", "/nonexistent/config.yaml")
-	defer os.Unsetenv("SC_AGENT_CONFIG")
+	require.NoError(t, os.Setenv("SC_AGENT_CONFIG", "/nonexistent/config.yaml"))
+	defer func() {
+		if err := os.Unsetenv("SC_AGENT_CONFIG"); err != nil {
+			t.Logf("Failed to unset SC_AGENT_CONFIG: %v", err)
+		}
+	}()
 	
 	_, err := Load()
 	assert.Error(t, err)
@@ -342,12 +376,12 @@ func TestLoadFromEnv_InvalidValues(t *testing.T) {
 	clearEnvVars()
 	
 	// Set invalid environment variables
-	os.Setenv("SC_COLLECTION_INTERVAL", "invalid")
-	os.Setenv("SC_HTTP_TIMEOUT", "invalid")
-	os.Setenv("SC_MAX_RETRIES", "invalid")
-	os.Setenv("SC_RETRY_INTERVAL", "invalid")
-	os.Setenv("SC_COLLECTOR_PROCESSES", "invalid")
-	os.Setenv("SC_VM_ID", "test-vm-invalid") // Set test VM ID
+	require.NoError(t, os.Setenv("SC_COLLECTION_INTERVAL", "invalid"))
+	require.NoError(t, os.Setenv("SC_HTTP_TIMEOUT", "invalid"))
+	require.NoError(t, os.Setenv("SC_MAX_RETRIES", "invalid"))
+	require.NoError(t, os.Setenv("SC_RETRY_INTERVAL", "invalid"))
+	require.NoError(t, os.Setenv("SC_COLLECTOR_PROCESSES", "invalid"))
+	require.NoError(t, os.Setenv("SC_VM_ID", "test-vm-invalid")) // Set test VM ID
 	defer clearEnvVars()
 	
 	cfg, err := Load()
@@ -372,8 +406,8 @@ func TestCollectorConfig(t *testing.T) {
 	
 	// Test collector config from environment
 	clearEnvVars()
-	os.Setenv("SC_COLLECTOR_PROCESSES", "false")
-	os.Setenv("SC_VM_ID", "test-vm-collector-env") // Set test VM ID
+	require.NoError(t, os.Setenv("SC_COLLECTOR_PROCESSES", "false"))
+	require.NoError(t, os.Setenv("SC_VM_ID", "test-vm-collector-env")) // Set test VM ID
 	defer clearEnvVars()
 	
 	cfg, err := Load()
@@ -399,7 +433,7 @@ func clearEnvVars() {
 	}
 	
 	for _, envVar := range envVars {
-		os.Unsetenv(envVar)
+		_ = os.Unsetenv(envVar) // Ignore errors in cleanup
 	}
 }
 

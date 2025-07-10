@@ -263,7 +263,11 @@ func (c *Client) sendRequest(ctx context.Context, data []byte, contentType strin
 	if err != nil {
 		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", zap.Error(closeErr))
+		}
+	}()
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)

@@ -130,31 +130,43 @@ func DefaultConfig() *Config {
 
 // getVMIDFromDMIDecode attempts to get VM ID from dmidecode
 func getVMIDFromDMIDecode() string {
-	// Try dmidecode first. This is the primary method.
+	// Only use dmidecode - no other VM ID sources
 	// Set a timeout for the command to prevent indefinite hangs.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "dmidecode", "-s", "system-uuid")
-	output, err := cmd.Output()
-
-	if ctx.Err() == context.DeadlineExceeded {
-		log.Printf("Error getting VM ID: dmidecode command timed out")
-		return ""
+	// Try common dmidecode locations in order of preference
+	dmidecodePaths := []string{
+		"/usr/sbin/dmidecode", // Most common location
+		"/sbin/dmidecode",     // Alternative location
+		"dmidecode",           // Fallback to PATH
 	}
 
-	if err != nil {
-		log.Printf("Error getting VM ID: dmidecode command failed: %v. Output: %s", err, string(output))
-		return ""
+	for _, dmidecodeCmd := range dmidecodePaths {
+		cmd := exec.CommandContext(ctx, dmidecodeCmd, "-s", "system-uuid")
+		output, err := cmd.Output()
+
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("dmidecode command timed out")
+			return ""
+		}
+
+		if err != nil {
+			log.Printf("dmidecode failed with %s: %v", dmidecodeCmd, err)
+			continue // Try next path
+		}
+
+		vmID := strings.TrimSpace(string(output))
+		
+		// Check for common invalid or unset dmidecode outputs
+		if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" && !strings.HasPrefix(vmID, "00000000-0000-0000") {
+			return vmID
+		}
+
+		log.Printf("dmidecode at %s returned invalid VM ID: '%s'", dmidecodeCmd, vmID)
 	}
 
-	vmID := strings.TrimSpace(string(output))
-	// Check for common invalid or unset dmidecode outputs
-	if vmID != "" && vmID != "Not Settable" && vmID != "Not Specified" && !strings.HasPrefix(vmID, "00000000-0000-0000") {
-		return vmID
-	}
-
-	log.Printf("Warning: dmidecode returned an invalid or empty VM ID: '%s'", vmID)
+	log.Printf("dmidecode not found or failed at all attempted paths")
 	return ""
 }
 
@@ -187,7 +199,19 @@ func (c *Config) loadFromFile(path string) error {
 		return err
 	}
 
-	return yaml.Unmarshal(data, c)
+	// Preserve the detected VM ID before unmarshaling
+	detectedVMID := c.VMID
+
+	if err := yaml.Unmarshal(data, c); err != nil {
+		return err
+	}
+
+	// If config file has empty vm_id, restore the detected one
+	if c.VMID == "" && detectedVMID != "" {
+		c.VMID = detectedVMID
+	}
+
+	return nil
 }
 
 // loadFromEnv loads configuration from environment variables
@@ -383,7 +407,7 @@ func (c *Config) validate() error {
 	}
 
 	if c.VMID == "" {
-		return fmt.Errorf("vm_id cannot be determined: dmidecode failed, /etc/machine-id unavailable, /proc/sys/kernel/random/boot_id unavailable, and hostname unavailable. Please set vm_id manually in config or SC_VM_ID environment variable")
+		return fmt.Errorf("vm_id cannot be determined: dmidecode failed to return a valid UUID. Please set vm_id manually in config.yaml or use SC_VM_ID environment variable")
 	}
 
 	if c.MaxRetries < 0 {
