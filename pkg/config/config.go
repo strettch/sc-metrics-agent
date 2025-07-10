@@ -202,7 +202,20 @@ func (c *Config) loadFromFile(path string) error {
 		return err
 	}
 
-	return yaml.Unmarshal(data, c)
+	// Preserve the detected VM ID before unmarshaling
+	detectedVMID := c.VMID
+
+	if err := yaml.Unmarshal(data, c); err != nil {
+		return err
+	}
+
+	// If config file has empty vm_id, restore the detected one
+	if c.VMID == "" && detectedVMID != "" {
+		log.Printf("Config file has empty vm_id, using detected VM ID: %s", detectedVMID)
+		c.VMID = detectedVMID
+	}
+
+	return nil
 }
 
 // loadFromEnv loads configuration from environment variables
