@@ -23,7 +23,7 @@ echo "Deploying $PACKAGE_FILE using existing setup_repo.sh..."
 
 # Setup SSH key
 mkdir -p ~/.ssh
-echo "$REPO_SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+echo "$REPO_SSH_KEY" > ~/.ssh/deploy_key
 chmod 600 ~/.ssh/deploy_key
 ssh-keyscan -H "$REPO_HOST" >> ~/.ssh/known_hosts
 
