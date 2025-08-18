@@ -71,7 +71,7 @@ func TestResourceManagerCompatibility_EndToEnd(t *testing.T) {
 
 	// Send metrics
 	ctx := context.Background()
-	response, err := client.SendMetrics(ctx, testMetrics)
+	response, err := client.SendMetrics(ctx, testMetrics, "")
 	require.NoError(t, err)
 	require.NotNil(t, response)
 
@@ -154,7 +154,7 @@ func TestResourceManagerCompatibility_UnsupportedMetrics(t *testing.T) {
 
 	// Send metrics
 	ctx := context.Background()
-	response, err := client.SendMetrics(ctx, testMetrics)
+	response, err := client.SendMetrics(ctx, testMetrics, "")
 	require.NoError(t, err)
 	require.NotNil(t, response)
 
@@ -266,7 +266,7 @@ func TestResourceManagerCompatibility_ValidationErrors(t *testing.T) {
 
 			// Send metrics
 			ctx := context.Background()
-			response, err := client.SendMetrics(ctx, tc.metrics)
+			response, err := client.SendMetrics(ctx, tc.metrics, "")
 			require.NoError(t, err)
 			require.NotNil(t, response)
 
@@ -333,7 +333,7 @@ func TestResourceManagerCompatibility_CompressionAndHeaders(t *testing.T) {
 
 	// Send metrics
 	ctx := context.Background()
-	response, err := client.SendMetrics(ctx, testMetrics)
+	response, err := client.SendMetrics(ctx, testMetrics, "")
 	require.NoError(t, err)
 	require.NotNil(t, response)
 
@@ -416,7 +416,7 @@ func TestResourceManagerCompatibility_BatchProcessing(t *testing.T) {
 
 	// Send batch
 	ctx := context.Background()
-	response, err := client.SendMetrics(ctx, testMetrics)
+	response, err := client.SendMetrics(ctx, testMetrics, "")
 	require.NoError(t, err)
 	require.NotNil(t, response)
 

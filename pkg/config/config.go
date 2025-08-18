@@ -22,6 +22,9 @@ type Config struct {
 	IngestorEndpoint string        `yaml:"ingestor_endpoint" json:"ingestor_endpoint"`
 	HTTPTimeout      time.Duration `yaml:"http_timeout" json:"http_timeout"`
 
+	// Metadata service settings
+	MetadataServiceEndpoint string `yaml:"metadata_service_endpoint" json:"metadata_service_endpoint"`
+
 	// Agent identification
 	VMID   string            `yaml:"vm_id" json:"vm_id"`
 	Labels map[string]string `yaml:"labels" json:"labels"`
@@ -83,6 +86,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		CollectionInterval: 30 * time.Second,
 		IngestorEndpoint:   "https://api.cloud.strettch.dev/resource-manager/api/v1/metrics/ingest",
+	    MetadataServiceEndpoint: "http://169.254.169.254/metadata/v1/auth-token",
 		HTTPTimeout:        30 * time.Second,
 		VMID:               vmID,
 		Labels:             make(map[string]string),
@@ -224,6 +228,10 @@ func (c *Config) loadFromEnv() {
 
 	if val := os.Getenv("SC_INGESTOR_ENDPOINT"); val != "" {
 		c.IngestorEndpoint = val
+	}
+
+	if val := os.Getenv("SC_METADATA_SERVICE_ENDPOINT"); val != "" {
+		c.MetadataServiceEndpoint = val
 	}
 
 	if val := os.Getenv("SC_HTTP_TIMEOUT"); val != "" {

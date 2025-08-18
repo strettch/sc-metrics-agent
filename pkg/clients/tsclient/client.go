@@ -24,6 +24,7 @@ const (
 	HeaderContentEncoding = "Content-Encoding"
 	HeaderUserAgent       = "User-Agent"
 	HeaderRetryAfter      = "Retry-After"
+	HeaderAuthorization   = "Authorization"
 	
 	// Values
 	ContentEncodingSnappy = "snappy"
@@ -124,7 +125,7 @@ func NewClientWithConfig(config ClientConfig, logger *zap.Logger) *Client {
 }
 
 // SendMetrics sends a batch of metrics to the ingestor
-func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWithValue) (*Response, error) {
+func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWithValue, authToken string) (*Response, error) {
 	if len(metrics) == 0 {
 		return nil, fmt.Errorf("no metrics to send")
 	}
@@ -153,11 +154,11 @@ func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWith
 		zap.Float64("compression_ratio", float64(len(compressed))/float64(len(payload))),
 	)
 
-	return c.sendWithRetry(ctx, compressed, ContentTypeTimeseriesBinary)
+	return c.sendWithRetry(ctx, compressed, ContentTypeTimeseriesBinary, authToken)
 }
 
 // SendDiagnostics sends diagnostic information to the ingestor
-func (c *Client) SendDiagnostics(ctx context.Context, diagnostics DiagnosticPayload) (*Response, error) {
+func (c *Client) SendDiagnostics(ctx context.Context, diagnostics DiagnosticPayload, authToken string) (*Response, error) {
 	c.logger.Debug("Sending diagnostics", zap.String("agent_id", diagnostics.AgentID))
 
 	// Serialize diagnostics to JSON
@@ -177,11 +178,11 @@ func (c *Client) SendDiagnostics(ctx context.Context, diagnostics DiagnosticPayl
 	// Compress with Snappy
 	compressed := snappy.Encode(nil, payload)
 
-	return c.sendWithRetry(ctx, compressed, "application/diagnostics-binary-0")
+	return c.sendWithRetry(ctx, compressed, "application/diagnostics-binary-0", authToken)
 }
 
 // sendWithRetry handles the HTTP request with retry logic
-func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType string) (*Response, error) {
+func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType string, authToken string) (*Response, error) {
 	var lastResponse *Response
 	var lastErr error
 
@@ -211,7 +212,7 @@ func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType str
 			}
 		}
 
-		response, err := c.sendRequest(ctx, data, contentType)
+		response, err := c.sendRequest(ctx, data, contentType, authToken)
 		if err != nil {
 			lastErr = err
 			c.logger.Warn("Request failed", zap.Error(err), zap.Int("attempt", attempt))
@@ -241,7 +242,7 @@ func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType str
 }
 
 // sendRequest sends a single HTTP request
-func (c *Client) sendRequest(ctx context.Context, data []byte, contentType string) (*Response, error) {
+func (c *Client) sendRequest(ctx context.Context, data []byte, contentType string, authToken string) (*Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -251,6 +252,10 @@ func (c *Client) sendRequest(ctx context.Context, data []byte, contentType strin
 	req.Header.Set(HeaderContentType, contentType)
 	req.Header.Set(HeaderContentEncoding, ContentEncodingSnappy)
 	req.Header.Set(HeaderUserAgent, UserAgentValue)
+	
+	if authToken != "" {
+		req.Header.Set(HeaderAuthorization, "Bearer "+authToken)
+	}
 
 	c.logger.Debug("Sending HTTP request",
 		zap.String("endpoint", c.endpoint),

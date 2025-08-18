@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
+	"github.com/strettch/sc-metrics-agent/pkg/clients/metadata"
 	"github.com/strettch/sc-metrics-agent/pkg/clients/tsclient"
 	"github.com/strettch/sc-metrics-agent/pkg/collector"
 	"github.com/strettch/sc-metrics-agent/pkg/config"
@@ -119,6 +120,7 @@ func main() {
 	logger.Info("Starting SC metrics agent",
 		zap.Duration("collection_interval", cfg.CollectionInterval),
 		zap.String("ingestor_endpoint", cfg.IngestorEndpoint),
+		zap.String("metadata_service_endpoint", cfg.MetadataServiceEndpoint),
 		zap.String("vm_id", cfg.VMID),
 		zap.Any("collectors", cfg.Collectors),
 	)
@@ -149,6 +151,7 @@ func main() {
 	}
 	httpClient := tsclient.NewClientWithConfig(clientConfig, logger)
 	metricWriter := tsclient.NewMetricWriter(httpClient, logger)
+	authMgr := metadata.NewAuthManager(cfg, logger)
 
 	// Create processing pipeline
 	pipelineProcessor := pipeline.NewProcessor(
@@ -156,6 +159,7 @@ func main() {
 		metricDecorator,
 		aggregator,
 		metricWriter,
+		authMgr,
 		logger,
 	)
 

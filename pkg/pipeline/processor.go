@@ -7,6 +7,7 @@ import (
 
 	"go.uber.org/zap"
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
+	"github.com/strettch/sc-metrics-agent/pkg/clients/metadata"
 	"github.com/strettch/sc-metrics-agent/pkg/clients/tsclient"
 	"github.com/strettch/sc-metrics-agent/pkg/collector"
 	"github.com/strettch/sc-metrics-agent/pkg/decorator"
@@ -18,6 +19,7 @@ type Processor struct {
 	decorator        decorator.MetricDecorator
 	aggregator       aggregate.Aggregator
 	writer           tsclient.MetricWriter
+	authMgr          *metadata.AuthManager // External auth handling
 	logger           *zap.Logger
 	lastProcessTime  time.Time
 	lastMetricCount  int
@@ -40,19 +42,39 @@ func NewProcessor(
 	decorator decorator.MetricDecorator,
 	aggregator aggregate.Aggregator,
 	writer tsclient.MetricWriter,
+	authMgr *metadata.AuthManager,
 	logger *zap.Logger,
 ) *Processor {
-	return &Processor{
+	p := &Processor{
 		collector:  collector,
 		decorator:  decorator,
 		aggregator: aggregator,
 		writer:     writer,
+		authMgr:    authMgr,
 		logger:     logger,
 	}
+	
+	// Initialize auth and start refresh loop
+	ctx := context.Background()
+	if err := authMgr.EnsureValidToken(ctx); err != nil {
+		logger.Error("Failed to get initial auth token", zap.Error(err))
+	}
+	authMgr.StartRefresh(ctx)
+	logger.Info("Auth refresh loop started")
+	
+	return p
 }
+
 
 // Process executes the complete pipeline: Collect -> Decorate -> Aggregate -> Write
 func (p *Processor) Process(ctx context.Context) error {
+	// Get the current auth token
+	authToken := p.authMgr.GetCurrentToken()
+	if authToken == "" {
+		p.lastError = "auth token is empty"
+		return fmt.Errorf("auth token is empty - refresh may have failed")
+	}
+
 	startTime := time.Now()
 	p.logger.Debug("Starting metrics processing pipeline")
 
@@ -129,7 +151,7 @@ func (p *Processor) Process(ctx context.Context) error {
 
 	// Step 4: Write metrics
 	p.logger.Debug("Step 4: Writing metrics")
-	if err := p.writer.WriteMetrics(ctx, aggregatedMetrics); err != nil {
+	if err := p.writer.WriteMetrics(ctx, aggregatedMetrics, authToken); err != nil {
 		p.lastError = fmt.Sprintf("write failed: %v", err)
 		return fmt.Errorf("failed to write metrics: %w", err)
 	}
@@ -153,6 +175,9 @@ func (p *Processor) Process(ctx context.Context) error {
 // This is called when the main pipeline fails to provide agent health status
 func (p *Processor) WriteDiagnostics(ctx context.Context) error {
 	p.logger.Debug("Writing diagnostics to ingestor")
+	
+	// Get the current auth token
+	authToken := p.authMgr.GetCurrentToken()
 
 	// Determine agent status
 	status := "healthy"
@@ -167,7 +192,7 @@ func (p *Processor) WriteDiagnostics(ctx context.Context) error {
 	}
 
 	// Send diagnostics
-	if err := p.writer.WriteDiagnostics(ctx, p.getAgentID(), status, p.lastError, collectorStatus); err != nil {
+	if err := p.writer.WriteDiagnostics(ctx, p.getAgentID(), status, p.lastError, collectorStatus, authToken); err != nil {
 		p.logger.Error("Failed to write diagnostics", zap.Error(err))
 		return fmt.Errorf("failed to write diagnostics: %w", err)
 	}
@@ -203,7 +228,10 @@ func (p *Processor) GetLastMetricCount() int {
 // Close performs cleanup for the processor
 func (p *Processor) Close() error {
 	p.logger.Debug("Closing pipeline processor")
-	
+
+	// Close auth manager
+	p.authMgr.Close()
+
 	// Close collector
 	if closer, ok := p.collector.(interface{ Close() error }); ok {
 		if err := closer.Close(); err != nil {
@@ -254,7 +282,11 @@ func (p *Processor) ValidateConfiguration() error {
 	if p.logger == nil {
 		return fmt.Errorf("logger is nil")
 	}
-	
+
+	if p.authMgr == nil {
+		return fmt.Errorf("auth manager is nil")
+	}
+
 	return nil
 }
 

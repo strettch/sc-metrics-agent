@@ -11,8 +11,8 @@ import (
 
 // MetricWriter defines the interface for writing metrics to an ingestor
 type MetricWriter interface {
-	WriteMetrics(ctx context.Context, metrics []aggregate.MetricWithValue) error
-	WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool) error
+	WriteMetrics(ctx context.Context, metrics []aggregate.MetricWithValue, authToken string) error
+	WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool, authToken string) error
 	Close() error
 }
 
@@ -31,7 +31,7 @@ func NewMetricWriter(client *Client, logger *zap.Logger) MetricWriter {
 }
 
 // WriteMetrics sends metrics to the ingestor
-func (mw *metricWriter) WriteMetrics(ctx context.Context, metrics []aggregate.MetricWithValue) error {
+func (mw *metricWriter) WriteMetrics(ctx context.Context, metrics []aggregate.MetricWithValue, authToken string) error {
 	if len(metrics) == 0 {
 		mw.logger.Debug("No metrics to write")
 		return nil
@@ -39,7 +39,7 @@ func (mw *metricWriter) WriteMetrics(ctx context.Context, metrics []aggregate.Me
 
 	mw.logger.Debug("Writing metrics to ingestor", zap.Int("metric_count", len(metrics)))
 
-	response, err := mw.client.SendMetrics(ctx, metrics)
+	response, err := mw.client.SendMetrics(ctx, metrics, authToken)
 	if err != nil {
 		mw.logger.Error("Failed to send metrics", zap.Error(err))
 		return fmt.Errorf("failed to send metrics: %w", err)
@@ -67,7 +67,7 @@ func (mw *metricWriter) WriteMetrics(ctx context.Context, metrics []aggregate.Me
 }
 
 // WriteDiagnostics sends diagnostic information to the ingestor
-func (mw *metricWriter) WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool) error {
+func (mw *metricWriter) WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool, authToken string) error {
 	mw.logger.Debug("Writing diagnostics to ingestor", zap.String("agent_id", agentID))
 
 	diagnostics := DiagnosticPayload{
@@ -83,7 +83,7 @@ func (mw *metricWriter) WriteDiagnostics(ctx context.Context, agentID string, st
 		},
 	}
 
-	response, err := mw.client.SendDiagnostics(ctx, diagnostics)
+	response, err := mw.client.SendDiagnostics(ctx, diagnostics, authToken)
 	if err != nil {
 		mw.logger.Error("Failed to send diagnostics", zap.Error(err))
 		return fmt.Errorf("failed to send diagnostics: %w", err)
@@ -137,7 +137,7 @@ func NewBatchedMetricWriter(writer MetricWriter, batchSize int, logger *zap.Logg
 }
 
 // WriteMetrics writes metrics in batches
-func (bmw *BatchedMetricWriter) WriteMetrics(ctx context.Context, metrics []aggregate.MetricWithValue) error {
+func (bmw *BatchedMetricWriter) WriteMetrics(ctx context.Context, metrics []aggregate.MetricWithValue, authToken string) error {
 	if len(metrics) == 0 {
 		return nil
 	}
@@ -160,7 +160,7 @@ func (bmw *BatchedMetricWriter) WriteMetrics(ctx context.Context, metrics []aggr
 			zap.Int("total_batches", len(batches)),
 			zap.Int("batch_metrics", len(batch)))
 
-		if err := bmw.writer.WriteMetrics(ctx, batch); err != nil {
+		if err := bmw.writer.WriteMetrics(ctx, batch, authToken); err != nil {
 			return fmt.Errorf("failed to write batch %d/%d: %w", i+1, len(batches), err)
 		}
 	}
@@ -170,8 +170,8 @@ func (bmw *BatchedMetricWriter) WriteMetrics(ctx context.Context, metrics []aggr
 }
 
 // WriteDiagnostics delegates to the underlying writer
-func (bmw *BatchedMetricWriter) WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool) error {
-	return bmw.writer.WriteDiagnostics(ctx, agentID, status, lastError, collectorStatus)
+func (bmw *BatchedMetricWriter) WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool, authToken string) error {
+	return bmw.writer.WriteDiagnostics(ctx, agentID, status, lastError, collectorStatus, authToken)
 }
 
 // Close closes the underlying writer
