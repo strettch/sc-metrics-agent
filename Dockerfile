@@ -28,7 +28,6 @@ FROM alpine:3.19
 RUN apk add --no-cache \
     ca-certificates \
     tzdata \
-    procfs \
     && rm -rf /var/cache/apk/*
 
 # Create non-root user (though process metrics may require root)
@@ -54,7 +53,6 @@ RUN chmod +x sc-agent
 # Environment variables with defaults
 ENV SC_LOG_LEVEL=info
 ENV SC_COLLECTION_INTERVAL=30s
-ENV SC_INGESTOR_ENDPOINT=http://localhost:8080/ingest
 ENV SC_HTTP_TIMEOUT=30s
 ENV SC_COLLECTOR_PROCESSES=true
 

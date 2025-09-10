@@ -119,7 +119,6 @@ func main() {
 
 	logger.Info("Starting SC metrics agent",
 		zap.Duration("collection_interval", cfg.CollectionInterval),
-		zap.String("ingestor_endpoint", cfg.IngestorEndpoint),
 		zap.String("metadata_service_endpoint", cfg.MetadataServiceEndpoint),
 		zap.String("vm_id", cfg.VMID),
 		zap.Any("collectors", cfg.Collectors),
@@ -141,17 +140,17 @@ func main() {
 
 	metricDecorator := decorator.NewMetricDecorator(cfg.VMID, cfg.Labels, logger)
 	aggregator := aggregate.NewAggregator(logger)
+	authMgr := metadata.NewAuthManager(cfg, logger)
 	
 	// Create HTTP client for metric writing
 	clientConfig := tsclient.ClientConfig{
-		Endpoint:   cfg.IngestorEndpoint,
+		AuthMgr:    authMgr, 
 		Timeout:    cfg.HTTPTimeout,
 		MaxRetries: cfg.MaxRetries,
 		RetryDelay: cfg.RetryInterval,
 	}
-	httpClient := tsclient.NewClientWithConfig(clientConfig, logger)
+	httpClient := tsclient.NewClient(clientConfig, logger)
 	metricWriter := tsclient.NewMetricWriter(httpClient, logger)
-	authMgr := metadata.NewAuthManager(cfg, logger)
 
 	// Create processing pipeline
 	pipelineProcessor := pipeline.NewProcessor(

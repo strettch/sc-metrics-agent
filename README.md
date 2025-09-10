@@ -125,9 +125,6 @@ sudo ./build/sc-agent
 
 # Specify a config file
 sudo SC_AGENT_CONFIG=/path/to/your/config.yaml ./build/sc-agent
-
-# Override settings with environment variables
-sudo SC_INGESTOR_ENDPOINT=http://localhost:8080 SC_LOG_LEVEL=debug ./build/sc-agent
 ```
 
 ### Checking Version

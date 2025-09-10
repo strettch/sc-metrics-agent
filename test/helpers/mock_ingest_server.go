@@ -342,3 +342,71 @@ func (m *MockIngestServer) ValidateRequest(request IngestRequest) []string {
 
 	return issues
 }
+
+// MockMetadataServer simulates the metadata service for testing
+type MockMetadataServer struct {
+	server      *httptest.Server
+	cloudAPIURL string
+	logger      *zap.Logger
+}
+
+// NewMockMetadataServer creates a new mock metadata server
+func NewMockMetadataServer(cloudAPIURL string, logger *zap.Logger) *MockMetadataServer {
+	mock := &MockMetadataServer{
+		cloudAPIURL: cloudAPIURL,
+		logger:      logger,
+	}
+
+	// Create the HTTP server
+	mock.server = httptest.NewServer(http.HandlerFunc(mock.handleRequest))
+	
+	return mock
+}
+
+// URL returns the mock server URL
+func (m *MockMetadataServer) URL() string {
+	return m.server.URL
+}
+
+// Close shuts down the mock server
+func (m *MockMetadataServer) Close() {
+	m.server.Close()
+}
+
+// handleRequest handles all requests to the mock metadata service
+func (m *MockMetadataServer) handleRequest(w http.ResponseWriter, r *http.Request) {
+	m.logger.Debug("Mock metadata service received request", 
+		zap.String("method", r.Method),
+		zap.String("path", r.URL.Path),
+	)
+
+	// Handle token endpoint - this is what the metadata client calls
+	if r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/auth/token") {
+		m.handleTokenRequest(w, r)
+		return
+	}
+
+	// Return 404 for unhandled endpoints
+	http.NotFound(w, r)
+}
+
+// handleTokenRequest simulates the metadata service auth token endpoint
+func (m *MockMetadataServer) handleTokenRequest(w http.ResponseWriter, r *http.Request) {
+	// Simulate the metadata service response format
+	response := map[string]interface{}{
+		"token":       "mock-test-token-" + time.Now().Format("20060102150405"),
+		"cloudAPIUrl": m.cloudAPIURL,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		m.logger.Error("Failed to encode metadata response", zap.Error(err))
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+
+	m.logger.Debug("Returned mock metadata response", 
+		zap.String("cloudAPIUrl", m.cloudAPIURL),
+	)
+}

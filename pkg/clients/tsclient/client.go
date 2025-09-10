@@ -13,6 +13,7 @@ import (
 	"github.com/klauspost/compress/snappy"
 	"go.uber.org/zap"
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
+	"github.com/strettch/sc-metrics-agent/pkg/clients/metadata"
 )
 
 const (
@@ -38,16 +39,16 @@ const (
 
 // Client handles HTTP communication with the timeseries ingestor
 type Client struct {
-	endpoint   string
-	httpClient *http.Client
-	logger     *zap.Logger
-	maxRetries int
-	retryDelay time.Duration
+	authMgr     *metadata.AuthManager
+	httpClient  *http.Client
+	logger      *zap.Logger
+	maxRetries  int
+	retryDelay  time.Duration
 }
 
 // ClientConfig holds client configuration
 type ClientConfig struct {
-	Endpoint   string
+	AuthMgr    *metadata.AuthManager
 	Timeout    time.Duration
 	MaxRetries int
 	RetryDelay time.Duration
@@ -74,25 +75,7 @@ type DiagnosticPayload struct {
 }
 
 // NewClient creates a new HTTP client for timeseries data
-func NewClient(endpoint string, timeout time.Duration, logger *zap.Logger) *Client {
-	return &Client{
-		endpoint: endpoint,
-		httpClient: &http.Client{
-			Timeout: timeout,
-			Transport: &http.Transport{
-				MaxIdleConns:        100,
-				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:     90 * time.Second,
-			},
-		},
-		logger:     logger,
-		maxRetries: DefaultMaxRetries,
-		retryDelay: DefaultRetryDelay,
-	}
-}
-
-// NewClientWithConfig creates a new client with custom configuration
-func NewClientWithConfig(config ClientConfig, logger *zap.Logger) *Client {
+func NewClient(config ClientConfig, logger *zap.Logger) *Client {
 	timeout := config.Timeout
 	if timeout == 0 {
 		timeout = DefaultTimeout
@@ -109,7 +92,7 @@ func NewClientWithConfig(config ClientConfig, logger *zap.Logger) *Client {
 	}
 
 	return &Client{
-		endpoint: config.Endpoint,
+		authMgr: config.AuthMgr,
 		httpClient: &http.Client{
 			Timeout: timeout,
 			Transport: &http.Transport{
@@ -123,6 +106,7 @@ func NewClientWithConfig(config ClientConfig, logger *zap.Logger) *Client {
 		retryDelay: retryDelay,
 	}
 }
+
 
 // SendMetrics sends a batch of metrics to the ingestor
 func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWithValue, authToken string) (*Response, error) {
@@ -154,7 +138,13 @@ func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWith
 		zap.Float64("compression_ratio", float64(len(compressed))/float64(len(payload))),
 	)
 
-	return c.sendWithRetry(ctx, compressed, ContentTypeTimeseriesBinary, authToken)
+	// Get the ingestor endpoint
+	endpoint, err := c.getIngestorEndpoint()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve ingestor endpoint: %w", err)
+	}
+
+	return c.sendWithRetry(ctx, compressed, ContentTypeTimeseriesBinary, authToken, endpoint)
 }
 
 // SendDiagnostics sends diagnostic information to the ingestor
@@ -178,11 +168,17 @@ func (c *Client) SendDiagnostics(ctx context.Context, diagnostics DiagnosticPayl
 	// Compress with Snappy
 	compressed := snappy.Encode(nil, payload)
 
-	return c.sendWithRetry(ctx, compressed, "application/diagnostics-binary-0", authToken)
+	// Get the ingestor endpoint
+	endpoint, err := c.getIngestorEndpoint()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve ingestor endpoint: %w", err)
+	}
+
+	return c.sendWithRetry(ctx, compressed, "application/diagnostics-binary-0", authToken, endpoint)
 }
 
 // sendWithRetry handles the HTTP request with retry logic
-func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType string, authToken string) (*Response, error) {
+func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType string, authToken string, endpoint string) (*Response, error) {
 	var lastResponse *Response
 	var lastErr error
 
@@ -212,7 +208,7 @@ func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType str
 			}
 		}
 
-		response, err := c.sendRequest(ctx, data, contentType, authToken)
+		response, err := c.sendRequest(ctx, data, contentType, authToken, endpoint)
 		if err != nil {
 			lastErr = err
 			c.logger.Warn("Request failed", zap.Error(err), zap.Int("attempt", attempt))
@@ -242,8 +238,8 @@ func (c *Client) sendWithRetry(ctx context.Context, data []byte, contentType str
 }
 
 // sendRequest sends a single HTTP request
-func (c *Client) sendRequest(ctx context.Context, data []byte, contentType string, authToken string) (*Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint, bytes.NewReader(data))
+func (c *Client) sendRequest(ctx context.Context, data []byte, contentType string, authToken string, endpoint string) (*Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -258,7 +254,7 @@ func (c *Client) sendRequest(ctx context.Context, data []byte, contentType strin
 	}
 
 	c.logger.Debug("Sending HTTP request",
-		zap.String("endpoint", c.endpoint),
+		zap.String("endpoint", endpoint),
 		zap.String("content_type", contentType),
 		zap.Int("payload_size", len(data)),
 	)
@@ -297,6 +293,22 @@ func (c *Client) sendRequest(ctx context.Context, data []byte, contentType strin
 	)
 
 	return response, nil
+}
+
+// getIngestorEndpoint resolves the ingestor endpoint from CloudAPI URL
+func (c *Client) getIngestorEndpoint() (string, error) {
+	if c.authMgr == nil {
+		return "", fmt.Errorf("AuthManager is required for endpoint resolution")
+	}
+
+	cloudAPIURL := c.authMgr.GetCloudAPIURL()
+	if cloudAPIURL == "" {
+		return "", fmt.Errorf("empty CloudAPI URL from metadata")
+	}
+	// Construct the ingestor endpoint
+	endpoint := fmt.Sprintf("%s/resource-manager/api/v1/metrics/ingest", cloudAPIURL)
+
+	return endpoint, nil
 }
 
 // shouldRetry determines if a request should be retried based on status code
@@ -352,16 +364,6 @@ func (c *Client) SetMaxRetries(maxRetries int) {
 func (c *Client) SetRetryDelay(delay time.Duration) {
 	if delay > 0 {
 		c.retryDelay = delay
-	}
-}
-
-// GetStats returns client statistics
-func (c *Client) GetStats() map[string]interface{} {
-	return map[string]interface{}{
-		"endpoint":    c.endpoint,
-		"max_retries": c.maxRetries,
-		"retry_delay": c.retryDelay.String(),
-		"timeout":     c.httpClient.Timeout.String(),
 	}
 }
 

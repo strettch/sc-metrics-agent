@@ -10,12 +10,13 @@ import (
 
 // AuthManager handles periodic token refresh for metadata service authentication.
 type AuthManager struct {
-	client        *Client
-	vmID          string
-	logger        *zap.Logger
-	refreshTicker *time.Ticker
-	stopCh        chan struct{}
-	currentToken  string
+	client           *Client
+	vmID             string
+	logger           *zap.Logger
+	refreshTicker    *time.Ticker
+	stopCh           chan struct{}
+	currentToken     string
+	cloudAPIURL string
 }
 
 // NewAuthManager creates a new auth manager.
@@ -35,7 +36,7 @@ func (am *AuthManager) IsRefreshRunning() bool {
 	return am.refreshTicker != nil
 }
 
-// fetchAndStoreToken fetches a token and stores it internally.
+// fetchAndStoreToken fetches a token and CloudAPI URL and stores them internally.
 func (am *AuthManager) fetchAndStoreToken(ctx context.Context, forceFetch bool) error {
 	if forceFetch {
 		am.logger.Debug("Forcing token refresh")
@@ -43,12 +44,20 @@ func (am *AuthManager) fetchAndStoreToken(ctx context.Context, forceFetch bool) 
 	} else {
 		am.logger.Debug("Fetching token (using cache if valid)")
 	}
+	
 	token, err := am.client.GetAuthToken(ctx, am.vmID)
 	if err != nil {
 		return err
 	}
 	am.currentToken = token
-	am.logger.Debug("Token stored successfully")
+	
+	cloudAPIURL, err := am.client.GetCloudAPIURL(ctx, am.vmID)
+	if err != nil {
+		return err
+	}
+	am.cloudAPIURL = cloudAPIURL
+	
+	am.logger.Debug("Token and CloudAPI URL stored successfully")
 	return nil
 }
 
@@ -85,6 +94,11 @@ func (am *AuthManager) refresh(ctx context.Context) error {
 // GetCurrentToken returns the current authentication token.
 func (am *AuthManager) GetCurrentToken() string {
 	return am.currentToken
+}
+
+// GetCloudAPIURL returns the cached CloudAPI URL
+func (am *AuthManager) GetCloudAPIURL() string {
+	return am.cloudAPIURL
 }
 
 // Close stops the refresh loop.
