@@ -115,7 +115,7 @@ jobs:
           
           ### Installation
           ```bash
-          curl -sSL https://repo.cloud.strettch.dev/metrics/install.sh | sudo bash
+          curl -sSL https://repo.cloud.strettch.dev/metrics/beta/install.sh | sudo bash
           ```
           
           ### Changes in this beta release:
