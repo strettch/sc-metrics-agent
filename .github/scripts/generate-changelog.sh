@@ -130,7 +130,7 @@ elif [[ "$RELEASE_TYPE" == "stable" ]]; then
     echo "### Installation"
     echo ""
     echo '```bash'
-    echo 'curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash'
+    echo 'curl -sSL https://repo.cloud.strettch.dev/metrics/install.sh | sudo bash'
     echo '```'
     echo ""
 fi
