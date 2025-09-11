@@ -23,7 +23,7 @@ echo "Deploying $PACKAGE_FILE using existing setup_repo.sh..."
 
 # Setup SSH key
 mkdir -p ~/.ssh
-echo "$REPO_SSH_KEY" > ~/.ssh/deploy_key
+echo "$REPO_SSH_KEY" | base64 -d > ~/.ssh/deploy_key
 chmod 600 ~/.ssh/deploy_key
 ssh-keyscan -H "$REPO_HOST" >> ~/.ssh/known_hosts
 
@@ -39,5 +39,5 @@ ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "cd /root/sc-metrics-agent 
 rm -f ~/.ssh/deploy_key
 
 echo "✅ Deployment completed successfully using setup_repo.sh!"
-echo "📦 Repository updated at: https://repo.cloud.strettch.dev/"
-echo "🚀 Install command: curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash"
+echo "📦 Repository updated at: https://repo.cloud.strettch.dev/metrics/"
+echo "🚀 Install command: curl -sSL https://repo.cloud.strettch.dev/metrics/install.sh | sudo bash"
