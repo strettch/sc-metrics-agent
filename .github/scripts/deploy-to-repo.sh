@@ -22,16 +22,38 @@ done
 echo "Deploying $PACKAGE_FILE using existing setup_repo.sh..."
 
 # Setup SSH key
+echo "Setting up SSH key..."
 mkdir -p ~/.ssh
-echo "$REPO_SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+
+# Check if SSH key is provided
+if [ -z "$REPO_SSH_KEY" ]; then
+    echo "Error: REPO_SSH_KEY environment variable is empty"
+    exit 1
+fi
+
+# Write the private key directly (assuming it's already in proper format)
+echo "Writing SSH private key..."
+echo "$REPO_SSH_KEY" > ~/.ssh/deploy_key
+
+# Verify the key was written successfully
+if [ ! -s ~/.ssh/deploy_key ]; then
+    echo "Error: SSH key file is empty after writing"
+    exit 1
+fi
+
+# Verify it looks like a valid SSH private key
+if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/deploy_key; then
+    echo "Error: SSH key doesn't appear to be a valid private key format"
+    echo "Expected to find 'BEGIN.*PRIVATE KEY' header"
+    exit 1
+fi
+
 chmod 600 ~/.ssh/deploy_key
+echo "SSH key setup completed successfully"
+
 ssh-keyscan -H "$REPO_HOST" >> ~/.ssh/known_hosts
 
-# Copy package to server (replaces the existing one)
-echo "Uploading package to repository server..."
-scp -i ~/.ssh/deploy_key "$PACKAGE_FILE" "${REPO_USER}@${REPO_HOST}:/root/sc-metrics-agent/"
-
-# Update repository and switch to appropriate branch
+# Update repository and switch to appropriate branch FIRST
 echo "Updating repository on server and switching to appropriate branch..."
 if [ "$REPO_TYPE" = "beta" ]; then
     BRANCH="dev"
@@ -46,13 +68,22 @@ ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "
     git clean -fd && 
     git fetch origin && 
     git checkout $BRANCH && 
-    git pull origin $BRANCH &&
+    echo 'Resetting to match remote branch exactly...' &&
+    git reset --hard origin/$BRANCH &&
     echo 'Repository updated to branch: $BRANCH'
 "
 
-# Run the existing setup_repo.sh script on the server
+# Copy package to server AFTER git cleanup
+echo "Uploading package to repository server..."
+scp -i ~/.ssh/deploy_key "$PACKAGE_FILE" "${REPO_USER}@${REPO_HOST}:/root/sc-metrics-agent/"
+
+# Extract version from package filename
+PACKAGE_VERSION=$(basename "$PACKAGE_FILE" | sed 's/sc-metrics-agent_\(.*\)_amd64\.deb/\1/')
+echo "Detected package version: $PACKAGE_VERSION"
+
+# Run the existing setup_repo.sh script on the server with version override
 echo "Running setup_repo.sh on repository server..."
-ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "cd /root/sc-metrics-agent && ./setup_repo.sh"
+ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "cd /root/sc-metrics-agent && OVERRIDE_VERSION='$PACKAGE_VERSION' ./setup_repo.sh"
 
 # Cleanup
 rm -f ~/.ssh/deploy_key
