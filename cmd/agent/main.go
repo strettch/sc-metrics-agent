@@ -117,7 +117,7 @@ func main() {
 		}()
 	}
 
-	logger.Info("Starting SC metrics agent",
+	logger.Info("Starting SC metrics agent, testing auto update",
 		zap.Duration("collection_interval", cfg.CollectionInterval),
 		zap.String("metadata_service_endpoint", cfg.MetadataServiceEndpoint),
 		zap.String("vm_id", cfg.VMID),

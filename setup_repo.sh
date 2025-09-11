@@ -12,23 +12,51 @@ GPG_EMAIL="engineering@strettch.com"
 PACKAGE_NAME="sc-metrics-agent"
 KEEP_VERSIONS=5  # Number of versions to keep in repository
 
-# Get the latest tag to use as version
-LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-if [ -n "$LATEST_TAG" ]; then
-    PACKAGE_VERSION="${LATEST_TAG#v}"  # Remove 'v' prefix
-    echo "Using version from latest tag: $PACKAGE_VERSION"
+# Release type configuration (stable or beta)
+RELEASE_TYPE="${RELEASE_TYPE:-stable}"
+echo "Release type: $RELEASE_TYPE"
+
+# Use override version if provided, otherwise get from git
+if [ -n "${OVERRIDE_VERSION:-}" ]; then
+    PACKAGE_VERSION="$OVERRIDE_VERSION"
+    echo "Using override version: $PACKAGE_VERSION"
 else
-    # Fallback to git describe if no tags
-    PACKAGE_VERSION=$(git describe --tags --always --dirty)
-    echo "No tags found, using git describe: $PACKAGE_VERSION"
+    # Get the latest tag to use as version
+    LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+    if [ -n "$LATEST_TAG" ]; then
+        PACKAGE_VERSION="${LATEST_TAG#v}"  # Remove 'v' prefix
+        echo "Using version from latest tag: $PACKAGE_VERSION"
+    else
+        # Fallback to git describe if no tags
+        PACKAGE_VERSION=$(git describe --tags --always --dirty)
+        echo "No tags found, using git describe: $PACKAGE_VERSION"
+    fi
 fi
 
-# Clean up any old packages
-rm -f ${PACKAGE_NAME}_*.deb
+# Clean up old packages, but keep the one we're about to process
+if [ -n "${OVERRIDE_VERSION:-}" ]; then
+    # Remove old packages but keep the current one
+    find . -name "${PACKAGE_NAME}_*.deb" ! -name "${PACKAGE_NAME}_${PACKAGE_VERSION}_amd64.deb" -delete 2>/dev/null || true
+    echo "Keeping package: ${PACKAGE_NAME}_${PACKAGE_VERSION}_amd64.deb"
+else
+    # Traditional cleanup when building locally
+    rm -f ${PACKAGE_NAME}_*.deb
+fi
 
 REPO_DOMAIN="repo.cloud.strettch.dev"  # Production repository domain
 DISTRIBUTIONS="bionic focal jammy noble oracular"  # Ubuntu versions to support
-WEB_ROOT_DIR="/srv/repo/public/metrics"
+
+# Set web root directory based on release type
+if [ "$RELEASE_TYPE" = "beta" ]; then
+    WEB_ROOT_DIR="/srv/repo/public/metrics/beta"
+    REPO_URL_PATH="metrics/beta"
+else
+    WEB_ROOT_DIR="/srv/repo/public/metrics"
+    REPO_URL_PATH="metrics"
+fi
+
+echo "Web root directory: $WEB_ROOT_DIR"
+echo "Repository URL path: $REPO_URL_PATH"
 # ---
 
 # --- Asset Paths ---
@@ -51,36 +79,48 @@ for tool in fpm aptly gpg; do
 done
 
 echo "--- [Step 1/7] Cleaning up previous repository publications..."
-# Clean up any old packages to keep repository clean
-rm -f ${PACKAGE_NAME}_*.deb
+# Note: Package cleanup was already handled above based on OVERRIDE_VERSION
 
-echo "--- [Step 2/7] Building Go binary via Makefile..."
-# Force VERSION to use the clean tag version
-GOOS=linux GOARCH=amd64 make build VERSION=v${PACKAGE_VERSION}
-
-# --- Pre-flight Checks ---
-echo "Checking required files..."
-required_files=(
-    "$SERVICE_FILE"
-    "$UPDATER_SERVICE"
-    "$UPDATER_TIMER"
-    "$UPDATER_SCRIPT"
-    "$POSTINSTALL_SCRIPT"
-    "$PREREMOVE_SCRIPT"
-    "$START_SCRIPT_SOURCE_PATH"
-    "build/${PACKAGE_NAME}"
-)
-
-for file in "${required_files[@]}"; do
-    if [ ! -f "$file" ]; then
-        echo "Error: Required file not found: ${file}" >&2
-        echo "Run 'make build' first if binary is missing" >&2
+if [ -n "${OVERRIDE_VERSION:-}" ]; then
+    echo "--- [Step 2/7] Using uploaded package (skipping build)..."
+    EXPECTED_PACKAGE="${PACKAGE_NAME}_${PACKAGE_VERSION}_amd64.deb"
+    if [ ! -f "$EXPECTED_PACKAGE" ]; then
+        echo "Error: Expected package file not found: $EXPECTED_PACKAGE"
         exit 1
     fi
-done
-# ---
+    echo "Found uploaded package: $EXPECTED_PACKAGE"
+else
+    echo "--- [Step 2/7] Building Go binary via Makefile..."
+    # Clean up packages when building locally
+    rm -f ${PACKAGE_NAME}_*.deb
+    # Force VERSION to use the clean tag version
+    GOOS=linux GOARCH=amd64 make build VERSION=v${PACKAGE_VERSION}
+fi
 
-echo "--- [Step 3/7] Preparing packaging assets..."
+if [ -z "${OVERRIDE_VERSION:-}" ]; then
+    # --- Pre-flight Checks ---
+    echo "Checking required files..."
+    required_files=(
+        "$SERVICE_FILE"
+        "$UPDATER_SERVICE"
+        "$UPDATER_TIMER"
+        "$UPDATER_SCRIPT"
+        "$POSTINSTALL_SCRIPT"
+        "$PREREMOVE_SCRIPT"
+        "$START_SCRIPT_SOURCE_PATH"
+        "build/${PACKAGE_NAME}"
+    )
+
+    for file in "${required_files[@]}"; do
+        if [ ! -f "$file" ]; then
+            echo "Error: Required file not found: ${file}" >&2
+            echo "Run 'make build' first if binary is missing" >&2
+            exit 1
+        fi
+    done
+    # ---
+
+    echo "--- [Step 3/7] Preparing packaging assets..."
 STAGING_DIR="/tmp/${PACKAGE_NAME}-build"
 rm -rf "${STAGING_DIR}"
 mkdir -p "${STAGING_DIR}/usr/bin" "${STAGING_DIR}/usr/local/bin" "${STAGING_DIR}/etc/systemd/system"
@@ -113,6 +153,7 @@ fpm -s dir -t deb \
     --depends "libc6" --depends "dmidecode" \
     --after-install "${POSTINSTALL_SCRIPT}" \
     --before-remove "${PREREMOVE_SCRIPT}"
+fi
 
 echo "--- [Step 4/7] Adding package to APT repository..."
 if ! sudo aptly repo show sc-metrics-agent-repo > /dev/null 2>&1; then
@@ -172,11 +213,11 @@ sudo mv "${GPG_PUBLIC_KEY_FILE}" "${WEB_ROOT_DIR}/"
 # Generate dynamic install.sh
 INSTALL_SCRIPT_PATH="${WEB_ROOT_DIR}/install.sh"
 TMP_INSTALL_SCRIPT=$(mktemp)
-cat << 'INSTALL_EOF' > "${TMP_INSTALL_SCRIPT}"
+cat << INSTALL_EOF > "${TMP_INSTALL_SCRIPT}"
 #!/bin/sh
 set -e
 REPO_HOST="repo.cloud.strettch.dev"
-REPO_PATH="metrics"
+REPO_PATH="${REPO_URL_PATH}"
 PACKAGE_NAME="sc-metrics-agent"
 GPG_KEY_FILENAME="sc-metrics-agent-repo.gpg"
 CONFIG_FILE="/etc/sc-metrics-agent/config.yaml"
@@ -246,5 +287,5 @@ echo
 echo "========================================================================"
 echo "✅ Repository setup complete!"
 echo "To install the agent on a client machine, run:"
-echo "curl -sSL https://${REPO_DOMAIN}/metrics/install.sh | sudo bash"
+echo "curl -sSL https://${REPO_DOMAIN}/${REPO_URL_PATH}/install.sh | sudo bash"
 echo "========================================================================"
