@@ -22,9 +22,35 @@ done
 echo "Deploying $PACKAGE_FILE using existing setup_repo.sh..."
 
 # Setup SSH key
+echo "Setting up SSH key..."
 mkdir -p ~/.ssh
-echo "$REPO_SSH_KEY" | base64 -d > ~/.ssh/deploy_key
+
+# Check if SSH key is provided
+if [ -z "$REPO_SSH_KEY" ]; then
+    echo "Error: REPO_SSH_KEY environment variable is empty"
+    exit 1
+fi
+
+# Write the private key directly (assuming it's already in proper format)
+echo "Writing SSH private key..."
+echo "$REPO_SSH_KEY" > ~/.ssh/deploy_key
+
+# Verify the key was written successfully
+if [ ! -s ~/.ssh/deploy_key ]; then
+    echo "Error: SSH key file is empty after writing"
+    exit 1
+fi
+
+# Verify it looks like a valid SSH private key
+if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/deploy_key; then
+    echo "Error: SSH key doesn't appear to be a valid private key format"
+    echo "Expected to find 'BEGIN.*PRIVATE KEY' header"
+    exit 1
+fi
+
 chmod 600 ~/.ssh/deploy_key
+echo "SSH key setup completed successfully"
+
 ssh-keyscan -H "$REPO_HOST" >> ~/.ssh/known_hosts
 
 # Copy package to server (replaces the existing one)
@@ -46,7 +72,8 @@ ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "
     git clean -fd && 
     git fetch origin && 
     git checkout $BRANCH && 
-    git pull origin $BRANCH &&
+    echo 'Resetting to match remote branch exactly...' &&
+    git reset --hard origin/$BRANCH &&
     echo 'Repository updated to branch: $BRANCH'
 "
 
