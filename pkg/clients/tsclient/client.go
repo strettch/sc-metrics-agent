@@ -74,7 +74,17 @@ type DiagnosticPayload struct {
 	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// NewClient creates a new HTTP client for timeseries data
+// NewClient creates a new HTTP client for timeseries data ingestion.
+//
+// Parameters:
+//   - config: ClientConfig struct containing client configuration. The AuthMgr field
+//     (a pointer to metadata.AuthManager) is required and must be non-nil, as it is
+//     used for authentication on outgoing requests. Timeout, MaxRetries, and RetryDelay
+//     are optional and will use defaults if zero-valued.
+//   - logger: Logger instance for logging client activity.
+//
+// Returns:
+//   - A pointer to a configured Client instance.
 func NewClient(config ClientConfig, logger *zap.Logger) *Client {
 	timeout := config.Timeout
 	if timeout == 0 {
