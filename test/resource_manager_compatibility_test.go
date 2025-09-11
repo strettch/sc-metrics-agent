@@ -3,17 +3,55 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
+	"github.com/strettch/sc-metrics-agent/pkg/clients/metadata"
 	"github.com/strettch/sc-metrics-agent/pkg/clients/tsclient"
+	"github.com/strettch/sc-metrics-agent/pkg/config"
 	"github.com/strettch/sc-metrics-agent/test/helpers"
 )
+
+// createTestClient creates a test client for integration testing
+func createTestClient(endpoint string, logger *zap.Logger) *tsclient.Client {
+	baseURL := endpoint
+	if strings.Contains(endpoint, "/metrics/ingest") {
+		baseURL = endpoint[:strings.Index(endpoint, "/metrics/ingest")]
+	}
+
+	mockMetadataServer := helpers.NewMockMetadataServer(baseURL, logger)
+	
+	cfg := &config.Config{
+		MetadataServiceEndpoint: mockMetadataServer.URL() + "/auth/token",
+		HTTPTimeout:            30 * time.Second,
+		VMID:                   "test-vm-id",
+	}
+	
+	authMgr := metadata.NewAuthManager(cfg, logger)
+	
+	ctx := context.Background()
+	if err := authMgr.EnsureValidToken(ctx); err != nil {
+		logger.Error("Failed to get auth token from mock metadata service", zap.Error(err))
+		return nil
+	}
+	
+	// Create client configuration
+	clientConfig := tsclient.ClientConfig{
+		AuthMgr:    authMgr,
+		Timeout:    30 * time.Second,
+		MaxRetries: 3,
+		RetryDelay: 5 * time.Second,
+	}
+	
+	return tsclient.NewClient(clientConfig, logger)
+}
 
 // TestResourceManagerCompatibility_EndToEnd tests complete end-to-end
 // compatibility with the resource-manager ingest endpoint
@@ -29,7 +67,7 @@ func TestResourceManagerCompatibility_EndToEnd(t *testing.T) {
 	defer mockServer.Close()
 
 	// Create client pointing to mock server
-	client := tsclient.NewClient(mockServer.URL(), 30*time.Second, logger)
+	client := createTestClient(mockServer.URL(), logger)
 	defer func() {
 		if err := client.Close(); err != nil {
 			t.Logf("Failed to close client: %v", err)
@@ -112,7 +150,7 @@ func TestResourceManagerCompatibility_UnsupportedMetrics(t *testing.T) {
 	defer mockServer.Close()
 
 	// Create client pointing to mock server
-	client := tsclient.NewClient(mockServer.URL(), 30*time.Second, logger)
+	client := createTestClient(mockServer.URL(), logger)
 	defer func() {
 		if err := client.Close(); err != nil {
 			t.Logf("Failed to close client: %v", err)
@@ -257,7 +295,7 @@ func TestResourceManagerCompatibility_ValidationErrors(t *testing.T) {
 			mockServer := helpers.NewMockIngestServer(logger)
 			defer mockServer.Close()
 
-			client := tsclient.NewClient(mockServer.URL(), 30*time.Second, logger)
+			client := createTestClient(mockServer.URL(), logger)
 			defer func() {
 				if err := client.Close(); err != nil {
 					t.Logf("Failed to close client: %v", err)
@@ -309,7 +347,7 @@ func TestResourceManagerCompatibility_CompressionAndHeaders(t *testing.T) {
 	defer mockServer.Close()
 
 	// Create client pointing to mock server
-	client := tsclient.NewClient(mockServer.URL(), 30*time.Second, logger)
+	client := createTestClient(mockServer.URL(), logger)
 	defer func() {
 		if err := client.Close(); err != nil {
 			t.Logf("Failed to close client: %v", err)
@@ -381,7 +419,7 @@ func TestResourceManagerCompatibility_BatchProcessing(t *testing.T) {
 	mockServer := helpers.NewMockIngestServer(logger)
 	defer mockServer.Close()
 
-	client := tsclient.NewClient(mockServer.URL(), 30*time.Second, logger)
+	client := createTestClient(mockServer.URL(), logger)
 	defer func() {
 		if err := client.Close(); err != nil {
 			t.Logf("Failed to close client: %v", err)

@@ -16,7 +16,6 @@ func TestDefaultConfig(t *testing.T) {
 	
 	assert.NotNil(t, cfg)
 	assert.Equal(t, 30*time.Second, cfg.CollectionInterval)
-	assert.Equal(t, "https://api.cloud.strettch.dev/resource-manager/api/v1/metrics/ingest", cfg.IngestorEndpoint)
 	assert.Equal(t, 30*time.Second, cfg.HTTPTimeout)
 	// VM ID might be empty on test systems without dmidecode
 	if cfg.VMID == "" {
@@ -48,7 +47,6 @@ func TestLoad_DefaultsOnly(t *testing.T) {
 	// Should match defaults (except VM ID which we set)
 	expected := DefaultConfig()
 	assert.Equal(t, expected.CollectionInterval, cfg.CollectionInterval)
-	assert.Equal(t, expected.IngestorEndpoint, cfg.IngestorEndpoint)
 	assert.Equal(t, expected.HTTPTimeout, cfg.HTTPTimeout)
 	assert.Equal(t, expected.LogLevel, cfg.LogLevel)
 	assert.Equal(t, expected.MaxRetries, cfg.MaxRetries)
@@ -64,7 +62,6 @@ func TestLoad_FromEnvironment(t *testing.T) {
 	// Set test environment variables
 	testEnvVars := map[string]string{
 		"SC_COLLECTION_INTERVAL": "60s",
-		"SC_INGESTOR_ENDPOINT":   "https://test.example.com/ingest",
 		"SC_HTTP_TIMEOUT":        "45s",
 		"SC_VM_ID":               "test-vm-123",
 		"SC_LOG_LEVEL":           "debug",
@@ -83,7 +80,6 @@ func TestLoad_FromEnvironment(t *testing.T) {
 	require.NoError(t, err)
 	
 	assert.Equal(t, 60*time.Second, cfg.CollectionInterval)
-	assert.Equal(t, "https://test.example.com/ingest", cfg.IngestorEndpoint)
 	assert.Equal(t, 45*time.Second, cfg.HTTPTimeout)
 	assert.Equal(t, "test-vm-123", cfg.VMID)
 	assert.Equal(t, "debug", cfg.LogLevel)
@@ -98,7 +94,6 @@ func TestLoad_FromFile(t *testing.T) {
 	// Create temporary config file
 	configContent := `
 collection_interval: 45s
-ingestor_endpoint: "https://config.example.com/ingest"
 http_timeout: 20s
 vm_id: "config-vm-456"
 labels:
@@ -131,7 +126,6 @@ retry_interval: 3s
 	require.NoError(t, err)
 	
 	assert.Equal(t, 45*time.Second, cfg.CollectionInterval)
-	assert.Equal(t, "https://config.example.com/ingest", cfg.IngestorEndpoint)
 	assert.Equal(t, 20*time.Second, cfg.HTTPTimeout)
 	assert.Equal(t, "config-vm-456", cfg.VMID)
 	assert.Equal(t, "warn", cfg.LogLevel)
@@ -146,7 +140,6 @@ func TestLoad_EnvironmentOverridesFile(t *testing.T) {
 	// Create config file
 	configContent := `
 collection_interval: 45s
-ingestor_endpoint: "https://config.example.com/ingest"
 vm_id: "config-vm"
 log_level: "warn"
 `
@@ -181,7 +174,6 @@ log_level: "warn"
 	// Environment should override file
 	assert.Equal(t, 120*time.Second, cfg.CollectionInterval) // From env
 	assert.Equal(t, "env-vm", cfg.VMID)                      // From env
-	assert.Equal(t, "https://config.example.com/ingest", cfg.IngestorEndpoint) // From file
 	assert.Equal(t, "warn", cfg.LogLevel)                    // From file
 }
 
@@ -189,7 +181,6 @@ func TestLoad_InvalidConfigFile(t *testing.T) {
 	// Create invalid YAML file
 	invalidContent := `
 collection_interval: 45s
-ingestor_endpoint: "https://example.com"
 invalid_yaml: [unclosed bracket
 `
 	
@@ -309,12 +300,6 @@ func TestValidate(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "http_timeout must be positive")
 	
-	// Test empty ingestor endpoint
-	invalidConfig = *validConfig
-	invalidConfig.IngestorEndpoint = ""
-	err = invalidConfig.validate()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "ingestor_endpoint cannot be empty")
 	
 	// Test empty VM ID
 	invalidConfig = *validConfig
@@ -366,7 +351,6 @@ func TestString(t *testing.T) {
 	
 	assert.Contains(t, str, "Config{")
 	assert.Contains(t, str, "CollectionInterval:")
-	assert.Contains(t, str, "IngestorEndpoint:")
 	assert.Contains(t, str, "VMID:test-vm")
 	assert.Contains(t, str, "LogLevel:debug")
 	assert.Contains(t, str, "Collectors:")
@@ -422,7 +406,6 @@ func clearEnvVars() {
 	envVars := []string{
 		"SC_AGENT_CONFIG",
 		"SC_COLLECTION_INTERVAL",
-		"SC_INGESTOR_ENDPOINT",
 		"SC_HTTP_TIMEOUT",
 		"SC_VM_ID",
 		"SC_LOG_LEVEL",

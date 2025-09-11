@@ -17,10 +17,7 @@ import (
 type Config struct {
 	// Collection settings
 	CollectionInterval time.Duration `yaml:"collection_interval" json:"collection_interval"`
-
-	// Ingestor settings
-	IngestorEndpoint string        `yaml:"ingestor_endpoint" json:"ingestor_endpoint"`
-	HTTPTimeout      time.Duration `yaml:"http_timeout" json:"http_timeout"`
+	HTTPTimeout        time.Duration `yaml:"http_timeout" json:"http_timeout"`
 
 	// Metadata service settings
 	MetadataServiceEndpoint string `yaml:"metadata_service_endpoint" json:"metadata_service_endpoint"`
@@ -84,10 +81,9 @@ func DefaultConfig() *Config {
 	// If empty, it will be caught in validation
 
 	return &Config{
-		CollectionInterval: 30 * time.Second,
-		IngestorEndpoint:   "https://api.cloud.strettch.dev/resource-manager/api/v1/metrics/ingest",
+		CollectionInterval:      30 * time.Second,
+		HTTPTimeout:             30 * time.Second,
 	    MetadataServiceEndpoint: "http://169.254.169.254/metadata/v1/auth-token",
-		HTTPTimeout:        30 * time.Second,
 		VMID:               vmID,
 		Labels:             make(map[string]string),
 		Collectors: CollectorConfig{
@@ -226,9 +222,6 @@ func (c *Config) loadFromEnv() {
 		}
 	}
 
-	if val := os.Getenv("SC_INGESTOR_ENDPOINT"); val != "" {
-		c.IngestorEndpoint = val
-	}
 
 	if val := os.Getenv("SC_METADATA_SERVICE_ENDPOINT"); val != "" {
 		c.MetadataServiceEndpoint = val
@@ -410,9 +403,6 @@ func (c *Config) validate() error {
 		return fmt.Errorf("http_timeout must be positive")
 	}
 
-	if c.IngestorEndpoint == "" {
-		return fmt.Errorf("ingestor_endpoint cannot be empty")
-	}
 
 	if c.VMID == "" {
 		return fmt.Errorf("vm_id cannot be determined: dmidecode failed to return a valid UUID. Please set vm_id manually in config.yaml or use SC_VM_ID environment variable")
@@ -460,6 +450,6 @@ func (c *Config) hasEnabledCollectors() bool {
 
 // String returns a string representation of the config (excluding sensitive data)
 func (c *Config) String() string {
-	return fmt.Sprintf("Config{CollectionInterval:%v, IngestorEndpoint:%s, VMID:%s, LogLevel:%s, Collectors:%+v}",
-		c.CollectionInterval, c.IngestorEndpoint, c.VMID, c.LogLevel, c.Collectors)
+	return fmt.Sprintf("Config{CollectionInterval:%v, VMID:%s, LogLevel:%s, Collectors:%+v}",
+		c.CollectionInterval, c.VMID, c.LogLevel, c.Collectors)
 }

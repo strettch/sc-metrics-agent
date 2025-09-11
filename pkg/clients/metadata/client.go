@@ -26,7 +26,8 @@ const (
 
 // TokenResponse represents the response from the metadata service
 type TokenResponse struct {
-	Token string `json:"token"`
+	Token       string `json:"token"`
+	CloudAPIUrl string `json:"cloudAPIUrl"`
 }
 
 // Client handles communication with the metadata service with token caching
@@ -35,9 +36,10 @@ type Client struct {
 	httpClient    *http.Client
 	logger        *zap.Logger
 	
-	// Token caching
+	// Token and CloudAPI URL caching
 	tokenMu       sync.RWMutex
 	cachedToken   string
+	cachedAPIURL  string
 	tokenExpiry   time.Time
 	tokenLifetime time.Duration
 }
@@ -81,30 +83,31 @@ func (c *Client) GetAuthToken(ctx context.Context, vmID string) (string, error) 
 		return c.cachedToken, nil
 	}
 
-	// Fetch new token
-	token, err := c.fetchAuthToken(ctx, vmID)
+	// Fetch new token and metadata
+	tokenResp, err := c.fetchAuthToken(ctx, vmID)
 	if err != nil {
 		return "", err
 	}
 
-	// Cache the token
-	c.cachedToken = token
+	// Cache the token and CloudAPI URL
+	c.cachedToken = tokenResp.Token
+	c.cachedAPIURL = tokenResp.CloudAPIUrl
 	c.tokenExpiry = time.Now().Add(c.tokenLifetime)
 	
 	c.logger.Info("Successfully fetched and cached new auth token",
 		zap.Time("expires_at", c.tokenExpiry),
 		zap.Duration("lifetime", c.tokenLifetime))
 
-	return token, nil
+	return tokenResp.Token, nil
 }
 
-// fetchAuthToken fetches a new authentication token from the metadata service
-func (c *Client) fetchAuthToken(ctx context.Context, vmID string) (string, error) {
+// fetchAuthToken fetches a new authentication token and metadata
+func (c *Client) fetchAuthToken(ctx context.Context, vmID string) (*TokenResponse, error) {
 	c.logger.Debug("Fetching new auth token from metadata service", zap.String("endpoint", c.endpoint))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set(HeaderAccept, AcceptJSON)
@@ -113,7 +116,7 @@ func (c *Client) fetchAuthToken(ctx context.Context, vmID string) (string, error
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		c.logger.Error("Failed to fetch auth token", zap.Error(err))
-		return "", fmt.Errorf("failed to fetch auth token: %w", err)
+		return nil, fmt.Errorf("failed to fetch auth token: %w", err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
@@ -126,25 +129,25 @@ func (c *Client) fetchAuthToken(ctx context.Context, vmID string) (string, error
 		c.logger.Error("Metadata service returned error",
 			zap.Int("status_code", resp.StatusCode),
 			zap.String("response", string(body)))
-		return "", fmt.Errorf("metadata service returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("metadata service returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return "", fmt.Errorf("failed to unmarshal token response: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal token response: %w", err)
 	}
 
 	if tokenResp.Token == "" {
-		return "", fmt.Errorf("received empty token from metadata service")
+		return nil, fmt.Errorf("received empty token from metadata service")
 	}
 
-	c.logger.Debug("Successfully fetched auth token")
-	return tokenResp.Token, nil
+	c.logger.Debug("Successfully fetched auth token and metadata")
+	return &tokenResp, nil
 }
 
 // GetAuthTokenWithRetry fetches an auth token with retry logic similar to tsclient
@@ -191,8 +194,37 @@ func (c *Client) InvalidateCache() {
 	defer c.tokenMu.Unlock()
 	
 	c.cachedToken = ""
+	c.cachedAPIURL = ""
 	c.tokenExpiry = time.Time{}
 	c.logger.Debug("Token cache invalidated")
+}
+
+// GetCloudAPIURL returns the cached CloudAPI URL
+func (c *Client) GetCloudAPIURL(ctx context.Context, vmID string) (string, error) {
+	c.tokenMu.RLock()
+	if c.cachedAPIURL != "" && time.Now().Before(c.tokenExpiry) {
+		url := c.cachedAPIURL
+		c.tokenMu.RUnlock()
+		c.logger.Debug("Using cached CloudAPI URL", zap.String("url", url))
+		return url, nil
+	}
+	c.tokenMu.RUnlock()
+
+	// Need to fetch new metadata to get the URL
+	_, err := c.GetAuthToken(ctx, vmID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get CloudAPI URL: %w", err)
+	}
+
+	c.tokenMu.RLock()
+	url := c.cachedAPIURL
+	c.tokenMu.RUnlock()
+
+	if url == "" {
+		return "", fmt.Errorf("CloudAPI URL not available in metadata response")
+	}
+
+	return url, nil
 }
 
 // Close closes the HTTP client
