@@ -68,8 +68,8 @@ generate_contributors() {
 if [[ "$RELEASE_TYPE" == "beta" ]]; then
     # For beta releases, show commits since last beta or last stable
     
-    LAST_BETA=$(git tag -l --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | head -1 || echo "")
-    LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
+    LAST_BETA=$(git tag -l --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | head -1 || echo "")
+    LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
     
     # Determine the reference point
     if [[ -n "$LAST_BETA" ]]; then
@@ -94,14 +94,14 @@ if [[ "$RELEASE_TYPE" == "beta" ]]; then
 elif [[ "$RELEASE_TYPE" == "stable" ]]; then
     # For stable releases, show comprehensive changelog since last stable
     
-    LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
+    LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
     
     if [[ -n "$LAST_STABLE" ]]; then
         # Get all commits since last stable (including any beta releases)
         generate_commit_list "$LAST_STABLE" "HEAD" "Changes since $LAST_STABLE"
         
         # Show beta releases included in this stable release
-        BETA_RELEASES=$(git tag -l --sort=version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | while read -r tag; do
+        BETA_RELEASES=$(git tag -l --sort=version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$' | while read -r tag; do
             # Check if this beta is after the last stable
             if git merge-base --is-ancestor "$LAST_STABLE" "$tag" 2>/dev/null; then
                 echo "$tag"

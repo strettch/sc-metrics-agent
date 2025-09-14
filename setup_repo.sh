@@ -24,7 +24,7 @@ else
     # Get the latest tag to use as version
     LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
     if [ -n "$LATEST_TAG" ]; then
-        PACKAGE_VERSION="${LATEST_TAG#v}"  # Remove 'v' prefix
+        PACKAGE_VERSION="${LATEST_TAG}"
         echo "Using version from latest tag: $PACKAGE_VERSION"
     else
         # Fallback to git describe if no tags
@@ -178,8 +178,12 @@ if [ $VERSION_COUNT -ge $KEEP_VERSIONS ]; then
     done
 fi
 
-sudo aptly repo add sc-metrics-agent-repo ${PACKAGE_NAME}_${PACKAGE_VERSION#v}_amd64.deb
+sudo aptly repo add sc-metrics-agent-repo ${PACKAGE_NAME}_${PACKAGE_VERSION}_amd64.deb
 SNAPSHOT_NAME="${PACKAGE_NAME}-${PACKAGE_VERSION}"
+
+# Drop existing snapshot if it exists to avoid conflicts
+sudo aptly snapshot drop "${SNAPSHOT_NAME}" 2>/dev/null || true
+
 sudo aptly snapshot create "${SNAPSHOT_NAME}" from repo sc-metrics-agent-repo
 
 # --- Configure GPG environment ---
