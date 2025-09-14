@@ -170,7 +170,7 @@ func main() {
 	updateTicker := time.NewTicker(1 * time.Hour)
 	defer updateTicker.Stop()
 
-	logger.Info("Agent started successfully")
+	logger.Info("AUTOUPDATE: Agent started successfully")
 
 	// Simple main execution loop
 	for {

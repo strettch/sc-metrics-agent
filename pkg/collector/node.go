@@ -54,7 +54,7 @@ func NewSystemCollector(cfg config.CollectorConfig, logger *zap.Logger) (*System
 	if cfg.CPU {
 		if err := sc.addCPUCollector(registry); err == nil {
 			enabled["cpu"] = true
-			logger.Info("Enabled CPU collector")
+			logger.Info("Enabled CPU collector: AUTO_UPDATE")
 		} else {
 			logger.Warn("Failed to enable CPU collector", zap.Error(err))
 		}

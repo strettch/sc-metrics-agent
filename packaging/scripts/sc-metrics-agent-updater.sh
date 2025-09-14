@@ -124,10 +124,13 @@ elif [ ${HEALTH_STATUS} -eq 2 ]; then
     repair_package || exit 1
 fi
 
-# Remember if service was running (preserving original behavior)
+# Remember if service was running before update
 SERVICE_WAS_RUNNING=false
 if systemctl is-active --quiet "${PACKAGE_NAME}"; then
     SERVICE_WAS_RUNNING=true
+    log "INFO" "Service is currently running, will restart after update"
+else
+    log "INFO" "Service is not running, will remain stopped after update"
 fi
 
 # Update package lists with retry
