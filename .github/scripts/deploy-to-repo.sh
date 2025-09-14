@@ -96,5 +96,5 @@ else
 fi
 
 echo "✅ Deployment completed successfully using setup_repo.sh!"
-echo "📦 Repository updated at: https://repo.cloud.strettch.dev/${REPO_URL_PATH}/"
-echo "🚀 Install command: curl -sSL https://repo.cloud.strettch.dev/${REPO_URL_PATH}/install.sh | sudo bash"
+echo "📦 Repository updated at: https://repo.cloud.strettch.com/${REPO_URL_PATH}/"
+echo "🚀 Install command: curl -sSL https://repo.cloud.strettch.com/${REPO_URL_PATH}/install.sh | sudo bash"

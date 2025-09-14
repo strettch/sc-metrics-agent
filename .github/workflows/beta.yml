@@ -84,7 +84,7 @@ jobs:
         cp packaging/systemd/sc-metrics-agent-update-scheduler.timer "${STAGING_DIR}/etc/systemd/system/"
         
         # Build package
-        fpm -s dir -t deb -n sc-metrics-agent -v ${VERSION#v} \
+        fpm -s dir -t deb -n sc-metrics-agent -v ${VERSION} \
           -C "${STAGING_DIR}/" \
           --description "SC Metrics Agent for system monitoring (Beta Release)" \
           --maintainer "engineering@strettch.com" \
@@ -101,7 +101,7 @@ jobs:
         VERSION: ${{ steps.version.outputs.version }}
       run: |
         chmod +x .github/scripts/deploy-to-repo.sh
-        .github/scripts/deploy-to-repo.sh beta sc-metrics-agent_${VERSION#v}_amd64.deb
+        .github/scripts/deploy-to-repo.sh beta sc-metrics-agent_${VERSION}_amd64.deb
 
     - name: Create GitHub pre-release
       uses: ncipollo/release-action@v1
@@ -115,7 +115,7 @@ jobs:
           
           ### Installation
           ```bash
-          curl -sSL https://repo.cloud.strettch.dev/metrics/beta/install.sh | sudo bash
+          curl -sSL https://repo.cloud.strettch.com/metrics/beta/install.sh | sudo bash
           ```
           
           ### Changes in this beta release:

@@ -41,14 +41,14 @@ jobs:
         fi
         
         # Check if version already exists
-        if git tag -l | grep -q "^v$VERSION$"; then
-          echo "Error: Version v$VERSION already exists"
+        if git tag -l | grep -q "^$VERSION$"; then
+          echo "Error: Version $VERSION already exists"
           exit 1
         fi
         
         # Get last stable release
-        LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "v0.0.0")
-        LAST_STABLE_CLEAN=${LAST_STABLE#v}
+        LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "0.0.0")
+        LAST_STABLE_CLEAN=${LAST_STABLE}
         
         echo "Last stable version: $LAST_STABLE_CLEAN"
         echo "New version: $VERSION"
@@ -80,7 +80,7 @@ jobs:
         print(f"Version validation passed: $VERSION is a valid {release_type} release")
         EOF
         
-        echo "version=v$VERSION" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
 
   stable-release:
     name: Build and Deploy Stable Release
@@ -155,7 +155,7 @@ jobs:
         cp packaging/systemd/sc-metrics-agent-update-scheduler.timer "${STAGING_DIR}/etc/systemd/system/"
         
         # Build package
-        fpm -s dir -t deb -n sc-metrics-agent -v ${VERSION#v} \
+        fpm -s dir -t deb -n sc-metrics-agent -v ${VERSION} \
           -C "${STAGING_DIR}/" \
           --description "SC Metrics Agent for system monitoring" \
           --maintainer "engineering@strettch.com" \
@@ -172,7 +172,7 @@ jobs:
         VERSION: ${{ needs.validate-version.outputs.version }}
       run: |
         chmod +x .github/scripts/deploy-to-repo.sh
-        .github/scripts/deploy-to-repo.sh stable sc-metrics-agent_${VERSION#v}_amd64.deb
+        .github/scripts/deploy-to-repo.sh stable sc-metrics-agent_${VERSION}_amd64.deb
 
     - name: Create Git tag
       run: |
@@ -193,7 +193,7 @@ jobs:
           
           ### Installation
           ```bash
-          curl -sSL https://repo.cloud.strettch.dev/metrics/install.sh | sudo bash
+          curl -sSL https://repo.cloud.strettch.com/metrics/install.sh | sudo bash
           ```
           
           ### Changes since last release:
