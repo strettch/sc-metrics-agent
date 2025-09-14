@@ -58,7 +58,7 @@ echo "Updating repository on server and switching to appropriate branch..."
 if [ "$REPO_TYPE" = "beta" ]; then
     BRANCH="dev"
 else
-    BRANCH="main"
+    BRANCH="dev"
 fi
 
 ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "
