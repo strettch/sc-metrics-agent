@@ -1,12 +1,12 @@
 #!/bin/bash
 # SC-Agent Installation Script
 # Purpose: Add package repository and install sc-metrics-agent via APT
-# Usage: curl -sSL https://repo.cloud.strettch.dev/metrics/install.sh | sudo bash
+# Usage: curl -sSL https://repo.cloud.strettch.com/metrics/install.sh | sudo bash
 
 set -euo pipefail 
 
 # Repository configuration 
-PACKAGE_REPO_URL="${SC_REPO_URL:-https://repo.cloud.strettch.dev/metrics}"
+PACKAGE_REPO_URL="${SC_REPO_URL:-https://repo.cloud.strettch.com/metrics}"
 PACKAGE_NAME="sc-metrics-agent"
 
 # Add trap for cleanup on failure

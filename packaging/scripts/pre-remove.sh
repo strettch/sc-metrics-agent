@@ -62,6 +62,21 @@ case "$ACTION" in
         # Clean up any remaining systemd files
         find /etc/systemd/system -name "sc-metrics-agent*" -delete 2>/dev/null || true
         
+        # Remove APT repository and GPG keyring files
+        echo "Removing APT repository configuration..."
+        rm -f /etc/apt/sources.list.d/sc-metrics-agent.list
+        rm -f /usr/share/keyrings/sc-metrics-agent-keyring.gpg
+        
+        # Remove binary files installed by the package
+        echo "Removing binary files..."
+        rm -f /usr/local/bin/sc-metrics-agent
+        rm -f /usr/local/bin/start-sc-metrics-agent.sh
+        rm -f /usr/bin/sc-metrics-agent-updater.sh
+        
+        # Update APT package index to remove references to the repository
+        echo "Updating APT package index..."
+        apt-get update 2>/dev/null || true
+        
         # Reload systemd daemon
         echo "Reloading systemd daemon..."
         systemctl daemon-reload || true # Allow failure if systemd is not available (e.g. in a container)
