@@ -193,17 +193,29 @@ if [ -z "${GPG_FINGERPRINT}" ]; then
     exit 1
 fi
 
-# Publish snapshots with correct fingerprint
+# Publish snapshots with correct fingerprint to separate namespace
+APTLY_NAMESPACE="metrics"
+if [ "$RELEASE_TYPE" = "beta" ]; then
+    APTLY_NAMESPACE="metrics-beta"
+fi
+
 for dist in ${DISTRIBUTIONS}; do
-    echo "Publishing for ${dist}..."
+    echo "Publishing for ${dist} to namespace ${APTLY_NAMESPACE}..."
     # Drop any existing publication first to avoid conflicts
-    sudo aptly publish drop "${dist}" 2>/dev/null || true
-    sudo aptly publish snapshot -gpg-key="${GPG_FINGERPRINT}" -distribution="${dist}" -batch "${SNAPSHOT_NAME}"
+    sudo aptly publish drop "${dist}" "${APTLY_NAMESPACE}" 2>/dev/null || true
+    sudo aptly publish snapshot -gpg-key="${GPG_FINGERPRINT}" -distribution="${dist}" -batch "${SNAPSHOT_NAME}" "${APTLY_NAMESPACE}"
 done
 
 echo "--- [Step 5/7] Creating and Publishing the new version..."
 sudo mkdir -p "${WEB_ROOT_DIR}/aptly"
-sudo rsync -a --delete ~/.aptly/public/ "${WEB_ROOT_DIR}/aptly/"
+# Copy only the specific namespace to avoid mixing repositories
+if [ -d ~/.aptly/public/${APTLY_NAMESPACE} ]; then
+    sudo rsync -a --delete ~/.aptly/public/${APTLY_NAMESPACE}/ "${WEB_ROOT_DIR}/aptly/"
+    echo "✅ Copied aptly namespace '${APTLY_NAMESPACE}' to web directory"
+else
+    echo "Warning: Aptly namespace ${APTLY_NAMESPACE} not found, copying entire public directory"
+    sudo rsync -a --delete ~/.aptly/public/ "${WEB_ROOT_DIR}/aptly/"
+fi
 
 # Export GPG public key
 GPG_PUBLIC_KEY_FILE="${PACKAGE_NAME}-repo.gpg"
