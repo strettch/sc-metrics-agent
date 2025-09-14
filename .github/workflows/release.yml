@@ -47,24 +47,50 @@ jobs:
         fi
         
         # Get last stable release
-        LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "0.0.0")
-        LAST_STABLE_CLEAN=${LAST_STABLE}
+        LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 | tr -d '\n' || echo "")
+        
+        # Sanitize and set default if no stable releases found
+        if [ -z "$LAST_STABLE" ] || [ "$LAST_STABLE" = " " ]; then
+            LAST_STABLE_CLEAN="0.0.0"
+        else
+            # Remove any whitespace and validate format
+            LAST_STABLE_CLEAN=$(echo "$LAST_STABLE" | tr -d '[:space:]')
+            if [[ ! $LAST_STABLE_CLEAN =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                LAST_STABLE_CLEAN="0.0.0"
+            fi
+        fi
         
         echo "Last stable version: $LAST_STABLE_CLEAN"
         echo "New version: $VERSION"
         echo "Release type: ${{ github.event.inputs.release_type }}"
+        
+        # Install packaging library
+        python3 -m pip install --user packaging
         
         # Validate version increment
         python3 << EOF
         import sys
         from packaging import version
         
-        last = "$LAST_STABLE_CLEAN".split('.')
-        new = "$VERSION".split('.')
-        release_type = "${{ github.event.inputs.release_type }}"
+        # Sanitize inputs
+        last_version = "$LAST_STABLE_CLEAN".strip()
+        new_version = "$VERSION".strip()
+        release_type = "${{ github.event.inputs.release_type }}".strip()
         
-        last_major, last_minor, last_patch = int(last[0]), int(last[1]), int(last[2])
-        new_major, new_minor, new_patch = int(new[0]), int(new[1]), int(new[2])
+        # Parse versions with error handling
+        try:
+            last = last_version.split('.')
+            last_major, last_minor, last_patch = map(int, last)
+        except (ValueError, IndexError):
+            print(f"Warning: Could not parse last version '{last_version}', using 0.0.0")
+            last_major, last_minor, last_patch = 0, 0, 0
+            
+        try:
+            new = new_version.split('.')
+            new_major, new_minor, new_patch = map(int, new)
+        except (ValueError, IndexError):
+            print(f"Error: Could not parse new version '{new_version}'")
+            sys.exit(1)
         
         if release_type == "major":
             expected = f"{last_major + 1}.0.0"
@@ -95,7 +121,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        ref: main
+        ref: dev
         fetch-depth: 0
 
     - name: Set up Go
@@ -133,7 +159,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y ruby ruby-dev build-essential
-        sudo gem install fpm
+        
+    - name: Install FPM gem
+      run: sudo gem install fpm --no-document
 
     - name: Build package
       env:
@@ -169,10 +197,19 @@ jobs:
         REPO_SSH_KEY: ${{ secrets.REPO_SSH_KEY }}
         REPO_HOST: ${{ secrets.REPO_HOST }}
         REPO_USER: ${{ secrets.REPO_USER }}
-        VERSION: ${{ needs.validate-version.outputs.version }}
       run: |
-        chmod +x .github/scripts/deploy-to-repo.sh
-        .github/scripts/deploy-to-repo.sh stable sc-metrics-agent_${VERSION}_amd64.deb
+        # Setup SSH
+        mkdir -p ~/.ssh
+        echo "$REPO_SSH_KEY" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan -H "$REPO_HOST" >> ~/.ssh/known_hosts
+        
+        # Update codebase and deploy packages  
+        scp -i ~/.ssh/deploy_key *.deb "${REPO_USER}@${REPO_HOST}:/root/sc-metrics-agent/"
+        ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "cd /root/sc-metrics-agent && git remote set-url origin git@github.com:strettch/sc-metrics-agent.git && git checkout . && git clean -fd && git checkout dev && git fetch origin dev && git reset --hard origin/dev && RELEASE_TYPE=stable ./setup_repo.sh"
+        
+        echo "✅ Deployment completed successfully!"
+        echo "📦 Repository updated at: https://repo.cloud.strettch.com/metrics/"
 
     - name: Create Git tag
       run: |
