@@ -41,14 +41,14 @@ jobs:
         fi
         
         # Check if version already exists
-        if git tag -l | grep -q "^v$VERSION$"; then
-          echo "Error: Version v$VERSION already exists"
+        if git tag -l | grep -q "^$VERSION$"; then
+          echo "Error: Version $VERSION already exists"
           exit 1
         fi
         
         # Get last stable release
-        LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "v0.0.0")
-        LAST_STABLE_CLEAN=${LAST_STABLE#v}
+        LAST_STABLE=$(git tag -l --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "0.0.0")
+        LAST_STABLE_CLEAN=${LAST_STABLE}
         
         echo "Last stable version: $LAST_STABLE_CLEAN"
         echo "New version: $VERSION"
@@ -80,7 +80,7 @@ jobs:
         print(f"Version validation passed: $VERSION is a valid {release_type} release")
         EOF
         
-        echo "version=v$VERSION" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
 
   stable-release:
     name: Build and Deploy Stable Release
@@ -95,6 +95,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
+        ref: main
         fetch-depth: 0
 
     - name: Set up Go
@@ -140,20 +141,21 @@ jobs:
       run: |
         # Create staging directory
         STAGING_DIR="/tmp/sc-metrics-agent-build"
-        mkdir -p "${STAGING_DIR}/usr/local/bin" "${STAGING_DIR}/etc/sc-metrics-agent" "${STAGING_DIR}/etc/systemd/system"
+        mkdir -p "${STAGING_DIR}/usr/bin" "${STAGING_DIR}/usr/local/bin" "${STAGING_DIR}/etc/sc-metrics-agent" "${STAGING_DIR}/etc/systemd/system"
         
         # Copy files
         cp build/sc-metrics-agent "${STAGING_DIR}/usr/local/bin/"
         cp packaging/scripts/start-sc-metrics-agent.sh "${STAGING_DIR}/usr/local/bin/"
         chmod +x "${STAGING_DIR}/usr/local/bin/start-sc-metrics-agent.sh"
-        cp packaging/scripts/sc-metrics-agent-updater.sh "${STAGING_DIR}/usr/local/bin/"
-        chmod +x "${STAGING_DIR}/usr/local/bin/sc-metrics-agent-updater.sh"
+        cp packaging/scripts/sc-metrics-agent-updater.sh "${STAGING_DIR}/usr/bin/"
+        chmod +x "${STAGING_DIR}/usr/bin/sc-metrics-agent-updater.sh"
         cp config.example.yaml "${STAGING_DIR}/etc/sc-metrics-agent/config.yaml"
         cp packaging/systemd/sc-metrics-agent.service "${STAGING_DIR}/etc/systemd/system/"
-        cp packaging/systemd/sc-metrics-agent-updater.service "${STAGING_DIR}/etc/systemd/system/"
+        cp packaging/systemd/sc-metrics-agent-update-scheduler.service "${STAGING_DIR}/etc/systemd/system/"
+        cp packaging/systemd/sc-metrics-agent-update-scheduler.timer "${STAGING_DIR}/etc/systemd/system/"
         
         # Build package
-        fpm -s dir -t deb -n sc-metrics-agent -v ${VERSION#v} \
+        fpm -s dir -t deb -n sc-metrics-agent -v ${VERSION} \
           -C "${STAGING_DIR}/" \
           --description "SC Metrics Agent for system monitoring" \
           --maintainer "engineering@strettch.com" \
@@ -170,7 +172,7 @@ jobs:
         VERSION: ${{ needs.validate-version.outputs.version }}
       run: |
         chmod +x .github/scripts/deploy-to-repo.sh
-        .github/scripts/deploy-to-repo.sh stable sc-metrics-agent_${VERSION#v}_amd64.deb
+        .github/scripts/deploy-to-repo.sh stable sc-metrics-agent_${VERSION}_amd64.deb
 
     - name: Create Git tag
       run: |
@@ -191,7 +193,7 @@ jobs:
           
           ### Installation
           ```bash
-          curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash
+          curl -sSL https://repo.cloud.strettch.com/metrics/install.sh | sudo bash
           ```
           
           ### Changes since last release:
