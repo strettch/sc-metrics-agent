@@ -22,10 +22,10 @@ echo "Fetching all tags from remote (pruning old, forcing update)..."
 git fetch origin --prune --tags --force
 
 # Get the latest tag by listing all semantic version tags, sorting them, and taking the last one
-LATEST_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 2>/dev/null || echo "v0.0.0")
+LATEST_TAG=$(git tag -l '[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 2>/dev/null || echo "0.0.0")
 
-# Remove 'v' prefix if it exists
-CURRENT_VERSION=${LATEST_TAG#v}
+# Use version from latest tag
+CURRENT_VERSION=${LATEST_TAG}
 
 # Split version into major, minor, patch
 IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
@@ -46,7 +46,7 @@ case "$INCREMENT_TYPE" in
     ;;
 esac
 
-NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
 
 echo "Current version: ${LATEST_TAG}"
 echo "Incrementing: ${INCREMENT_TYPE}"
@@ -78,10 +78,5 @@ git tag -f -a "${NEW_VERSION}" -m "Release ${NEW_VERSION}" "$GIT_COMMIT_HASH"
 echo "Force pushing tag $NEW_VERSION (refs/tags/${NEW_VERSION}) to origin..."
 git push origin --force "refs/tags/${NEW_VERSION}"
 
-# The original non-force push is now redundant due to the force push above.
-# If a non-force push is desired as a fallback or for other reasons, it should be conditional.
-# For now, we'll assume the force push is the primary intent for ensuring the tag is on the remote.
-# echo "Pushing tag ${NEW_VERSION} to remote..."
-# git push origin "${NEW_VERSION}"
 
 echo "✅ Successfully created and pushed tag ${NEW_VERSION}."
