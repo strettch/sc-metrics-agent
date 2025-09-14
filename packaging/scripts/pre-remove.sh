@@ -53,14 +53,18 @@ case "$ACTION" in
         rm -rf "$CONFIG_DIR"
         rm -rf "$RUNTIME_DIR"
         
-        # Remove systemd service files explicitly (preserving original behavior)
+        # Remove systemd service files more thoroughly
         echo "Removing systemd service files..."
-        rm -f /etc/systemd/system/sc-metrics-agent.service
-        rm -f /etc/systemd/system/sc-metrics-agent-update-scheduler.service
-        rm -f /etc/systemd/system/sc-metrics-agent-update-scheduler.timer
+        rm -f /etc/systemd/system/sc-metrics-agent.service 2>/dev/null || true
+        rm -f /etc/systemd/system/sc-metrics-agent-update-scheduler.service 2>/dev/null || true
+        rm -f /etc/systemd/system/sc-metrics-agent-update-scheduler.timer 2>/dev/null || true
+        rm -f /lib/systemd/system/sc-metrics-agent.service 2>/dev/null || true
+        rm -f /lib/systemd/system/sc-metrics-agent-update-scheduler.service 2>/dev/null || true
+        rm -f /lib/systemd/system/sc-metrics-agent-update-scheduler.timer 2>/dev/null || true
         
-        # Clean up any remaining systemd files
-        find /etc/systemd/system -name "sc-metrics-agent*" -delete 2>/dev/null || true
+        # Remove any symlinks created by systemctl enable
+        find /etc/systemd/system -type l -name "sc-metrics-agent*" -delete 2>/dev/null || true
+        find /etc/systemd/system/multi-user.target.wants -name "sc-metrics-agent*" -delete 2>/dev/null || true
         
         # Remove APT repository and GPG keyring files
         echo "Removing APT repository configuration..."
@@ -69,9 +73,10 @@ case "$ACTION" in
         
         # Remove binary files installed by the package
         echo "Removing binary files..."
-        rm -f /usr/local/bin/sc-metrics-agent
-        rm -f /usr/local/bin/start-sc-metrics-agent.sh
-        rm -f /usr/bin/sc-metrics-agent-updater.sh
+        rm -f /usr/local/bin/sc-metrics-agent 2>/dev/null || true
+        rm -f /usr/local/bin/start-sc-metrics-agent.sh 2>/dev/null || true
+        rm -f /usr/bin/sc-metrics-agent 2>/dev/null || true
+        rm -f /usr/bin/sc-metrics-agent-updater.sh 2>/dev/null || true
         
         # Update APT package index to remove references to the repository
         echo "Updating APT package index..."

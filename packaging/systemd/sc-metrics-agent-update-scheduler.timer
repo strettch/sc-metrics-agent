@@ -6,8 +6,8 @@ Documentation=https://docs.cloud.strettch.com/agents/sc-metrics-agent
 # Start 5 minutes after boot
 OnBootSec=5min
 
-# Run every 1 hours
-OnCalendar=*:*:00,30
+# Run every 1 hour
+OnCalendar=hourly
 
 
 # Add randomized delay to prevent thundering herd
