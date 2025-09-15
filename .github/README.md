@@ -48,8 +48,8 @@ This directory contains the GitHub Actions workflows and scripts for automated t
 ## Repository Structure
 
 The CI/CD pipeline uses your existing `setup_repo.sh` script for deployment:
-- **Repository:** `https://repo.cloud.strettch.dev/`
-- **Install:** `curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash`
+- **Repository:** `https://repo.cloud.strettch.com/metrics/`
+- **Install:** `curl -sSL https://repo.cloud.strettch.com/metrics/install.sh | sudo bash`
 - **Both beta and stable releases use the same repository**
 
 ## Required Secrets
