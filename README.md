@@ -59,7 +59,7 @@ The agent follows a modular pipeline architecture:
 For production deployments, install the stable release:
 
 ```bash
-curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash
+curl -sSL https://repo.cloud.strettch.com/metrics/install.sh | sudo bash
 ```
 
 ### Beta Release
@@ -67,7 +67,7 @@ curl -sSL https://repo.cloud.strettch.dev/install.sh | sudo bash
 For testing latest features, install the beta release:
 
 ```bash
-curl -sSL https://repo.cloud.strettch.dev/beta/install.sh | sudo bash
+curl -sSL https://repo.cloud.strettch.com/metrics/beta/install.sh | sudo bash
 ```
 
 The installation script will:
