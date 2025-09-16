@@ -12,7 +12,6 @@
 # Location: This script is intended to run on the repository server, typically
 #           at /root/sc-metrics-agent/
 #
-
 # --- Script Configuration and Initialization ---
 
 set -euo pipefail
