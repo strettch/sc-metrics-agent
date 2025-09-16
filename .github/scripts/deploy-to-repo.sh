@@ -1,100 +1,90 @@
 #!/bin/bash
+# scripts/deploy-to-repo.sh - Deploy to repository server
+set -euo pipefail
 
-set -e
+VERSION="${1:?Version required}"
+CHANNEL="${2:?Channel required}"
+DEPLOY_KEY="${3:?Deploy key required}"
+REPO_HOST="${4:?Repository host required}"
+REPO_USER="${5:?Repository user required}"
 
-REPO_TYPE="$1"  # "beta" or "stable" (not used since we use existing setup_repo.sh)
-PACKAGE_FILE="$2"
+# Setup SSH securely
+setup_ssh() {
+    mkdir -p ~/.ssh
+    echo "$DEPLOY_KEY" > ~/.ssh/deploy_key
+    chmod 600 ~/.ssh/deploy_key
+    
+    # Add host key verification
+    ssh-keyscan -H "$REPO_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+    
+    # Create SSH config for this connection
+    cat > ~/.ssh/config <<-EOF
+	Host repo-server
+	    HostName $REPO_HOST
+	    User $REPO_USER
+	    IdentityFile ~/.ssh/deploy_key
+	    StrictHostKeyChecking yes
+	    ConnectTimeout 10
+	    ServerAliveInterval 60
+	EOF
+}
 
-if [[ ! -f "$PACKAGE_FILE" ]]; then
-    echo "Error: Package file $PACKAGE_FILE not found"
-    exit 1
-fi
+# Deploy to repository
+deploy() {
+    echo "Deploying version $VERSION to $CHANNEL repository..."
+    
+    # Update repository code
+    ssh repo-server bash -s <<-REMOTE_SCRIPT
+		set -euo pipefail
+		
+		cd /root/sc-metrics-agent || exit 1
+		
+		# Update git repository
+		echo "Updating repository..."
+		git fetch origin dev --tags
+		git checkout dev
+		git reset --hard origin/dev
+		
+		# Clean up old tags
+		git tag -d v* 2>/dev/null || true
+		
+		# Run setup with proper environment
+		echo "Building and publishing packages..."
+		export RELEASE_TYPE="$CHANNEL"
+		export PACKAGE_VERSION="$VERSION"
+		
+		if ./setup_repo.sh; then
+		    echo "✅ Deployment successful"
+		else
+		    echo "❌ Deployment failed"
+		    exit 1
+		fi
+		
+		# Validate deployment
+		if [ "$CHANNEL" = "beta" ]; then
+		    INSTALL_PATH="/srv/repo/public/metrics/beta/install.sh"
+		else
+		    INSTALL_PATH="/srv/repo/public/metrics/install.sh"
+		fi
+		
+		if [ ! -f "\$INSTALL_PATH" ]; then
+		    echo "❌ Install script not found at \$INSTALL_PATH"
+		    exit 1
+		fi
+		
+		echo "✅ All validations passed"
+	REMOTE_SCRIPT
+}
 
-# Validate required environment variables
-required_vars=("REPO_SSH_KEY" "REPO_HOST" "REPO_USER")
-for var in "${required_vars[@]}"; do
-    if [[ -z "${!var}" ]]; then
-        echo "Error: Environment variable $var is required"
-        exit 1
-    fi
-done
+# Cleanup function
+cleanup() {
+    rm -f ~/.ssh/deploy_key
+    rm -f ~/.ssh/config
+}
 
-echo "Deploying $PACKAGE_FILE using existing setup_repo.sh..."
+# Main execution
+trap cleanup EXIT
+setup_ssh
+deploy
 
-# Setup SSH key
-echo "Setting up SSH key..."
-mkdir -p ~/.ssh
-
-# Check if SSH key is provided
-if [ -z "$REPO_SSH_KEY" ]; then
-    echo "Error: REPO_SSH_KEY environment variable is empty"
-    exit 1
-fi
-
-# Write the private key directly (assuming it's already in proper format)
-echo "Writing SSH private key..."
-echo "$REPO_SSH_KEY" > ~/.ssh/deploy_key
-
-# Verify the key was written successfully
-if [ ! -s ~/.ssh/deploy_key ]; then
-    echo "Error: SSH key file is empty after writing"
-    exit 1
-fi
-
-# Verify it looks like a valid SSH private key
-if ! grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/deploy_key; then
-    echo "Error: SSH key doesn't appear to be a valid private key format"
-    echo "Expected to find 'BEGIN.*PRIVATE KEY' header"
-    exit 1
-fi
-
-chmod 600 ~/.ssh/deploy_key
-echo "SSH key setup completed successfully"
-
-ssh-keyscan -H "$REPO_HOST" >> ~/.ssh/known_hosts
-
-# Update repository and switch to appropriate branch FIRST
-echo "Updating repository on server and switching to appropriate branch..."
-if [ "$REPO_TYPE" = "beta" ]; then
-    BRANCH="main"
-else
-    BRANCH="main"
-fi
-
-ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "
-    cd /root/sc-metrics-agent && 
-    echo 'Cleaning up working directory...' &&
-    git checkout . && 
-    git clean -fd && 
-    git fetch origin && 
-    git checkout $BRANCH && 
-    echo 'Resetting to match remote branch exactly...' &&
-    git reset --hard origin/$BRANCH &&
-    echo 'Repository updated to branch: $BRANCH'
-"
-
-# Copy package to server AFTER git cleanup
-echo "Uploading package to repository server..."
-scp -i ~/.ssh/deploy_key "$PACKAGE_FILE" "${REPO_USER}@${REPO_HOST}:/root/sc-metrics-agent/"
-
-# Extract version from package filename
-PACKAGE_VERSION=$(basename "$PACKAGE_FILE" | sed 's/sc-metrics-agent_\(.*\)_amd64\.deb/\1/')
-echo "Detected package version: $PACKAGE_VERSION"
-
-# Run the existing setup_repo.sh script on the server with version override and release type
-echo "Running setup_repo.sh on repository server..."
-ssh -i ~/.ssh/deploy_key "${REPO_USER}@${REPO_HOST}" "cd /root/sc-metrics-agent && OVERRIDE_VERSION='$PACKAGE_VERSION' RELEASE_TYPE='$REPO_TYPE' ./setup_repo.sh"
-
-# Cleanup
-rm -f ~/.ssh/deploy_key
-
-# Set URL path based on release type
-if [ "$REPO_TYPE" = "beta" ]; then
-    REPO_URL_PATH="metrics/beta"
-else
-    REPO_URL_PATH="metrics"
-fi
-
-echo "✅ Deployment completed successfully using setup_repo.sh!"
-echo "📦 Repository updated at: https://repo.cloud.strettch.com/${REPO_URL_PATH}/"
-echo "🚀 Install command: curl -sSL https://repo.cloud.strettch.com/${REPO_URL_PATH}/install.sh | sudo bash"
+echo "Deployment completed for $VERSION ($CHANNEL)"
