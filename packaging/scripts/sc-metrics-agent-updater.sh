@@ -214,11 +214,10 @@ for attempt in $(seq 1 ${MAX_RETRIES}); do
 done
 
 if [ "${UPDATE_SUCCESS}" = true ]; then
-    # Configuration validation (preserving original behavior)
     if [ -f "${CONFIG_FILE}" ]; then
         log "INFO" "Validating configuration..."
-        if command -v "/usr/local/bin/${PACKAGE_NAME}" >/dev/null 2>&1; then
-            if ! "/usr/local/bin/${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}" 2>/dev/null; then
+        if command -v "/usr/bin/${PACKAGE_NAME}" >/dev/null 2>&1; then
+            if ! "/usr/bin/${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}" 2>/dev/null; then
                 log "WARN" "Configuration validation failed, but continuing with update"
             else
                 log "INFO" "Configuration validation successful"
@@ -228,7 +227,7 @@ if [ "${UPDATE_SUCCESS}" = true ]; then
         fi
     fi
 
-    # Check if service needs restart (using preserved logic)
+    # Check if service needs restart and restart if it was running before
     if [ "$SERVICE_WAS_RUNNING" = true ]; then
         if systemctl is-active --quiet ${PACKAGE_NAME} 2>/dev/null; then
             log "INFO" "Restarting service to apply update..."
