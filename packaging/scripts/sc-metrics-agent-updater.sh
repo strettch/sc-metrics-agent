@@ -217,8 +217,8 @@ if [ "${UPDATE_SUCCESS}" = true ]; then
     # Configuration validation (preserving original behavior)
     if [ -f "${CONFIG_FILE}" ]; then
         log "INFO" "Validating configuration..."
-        if command -v "/usr/local/bin/${PACKAGE_NAME}" >/dev/null 2>&1; then
-            if ! "/usr/local/bin/${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}" 2>/dev/null; then
+        if command -v "/usr/bin/${PACKAGE_NAME}" >/dev/null 2>&1; then
+            if ! "/usr/bin/${PACKAGE_NAME}" --validate-config "${CONFIG_FILE}" 2>/dev/null; then
                 log "WARN" "Configuration validation failed, but continuing with update"
             else
                 log "INFO" "Configuration validation successful"
