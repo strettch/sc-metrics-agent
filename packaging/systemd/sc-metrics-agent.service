@@ -1,18 +1,29 @@
 [Unit]
-Description=SC Metrics Agent
-After=network.target
-Wants=network.target
+Description=SC Metrics Agent - System metrics collection and monitoring
+Documentation=https://docs.cloud.strettch.com/agents/sc-metrics-agent
+After=network-online.target
+Wants=network-online.target
+Requires=network.target
 
 [Service]
 Type=simple
 User=root
 Group=root
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/usr/local/bin/start-sc-metrics-agent.sh
+ExecStart=/usr/bin/sc-metrics-agent
 Restart=always
-RestartSec=5
+RestartSec=30
 KillMode=mixed
 KillSignal=SIGTERM
+
+# Environment
+EnvironmentFile=-/etc/sc-metrics-agent/environment
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=SCMetricsAgent
+SyslogLevel=info
 
 [Install]
 WantedBy=multi-user.target
