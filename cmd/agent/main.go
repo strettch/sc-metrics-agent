@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -41,31 +40,6 @@ func validateConfigFile(configPath string) error {
 	return err
 }
 
-// checkForUpdates checks if updates are available for the agent
-func checkForUpdates(logger *zap.Logger) {
-	cmd := exec.Command("apt", "list", "--upgradable", "sc-metrics-agent")
-	output, err := cmd.Output()
-	
-	if err != nil {
-		logger.Debug("Failed to check for updates", zap.Error(err))
-		return
-	}
-	
-	// Check if sc-metrics-agent is in the upgradable list
-	if strings.Contains(string(output), "sc-metrics-agent") {
-		logger.Info("Update available for sc-metrics-agent, triggering updater service")
-		
-		// Trigger the external updater service
-		cmd = exec.Command("systemctl", "start", "sc-metrics-agent-updater.service")
-		if err := cmd.Run(); err != nil {
-			logger.Error("Failed to trigger updater service", zap.Error(err))
-		} else {
-			logger.Info("Update service triggered successfully")
-		}
-	} else {
-		logger.Debug("No updates available")
-	}
-}
 
 func main() {
 	versionFlag := flag.Bool("v", false, "Print version and exit")
@@ -166,10 +140,6 @@ func main() {
 	ticker := time.NewTicker(cfg.CollectionInterval)
 	defer ticker.Stop()
 
-	// Start update check loop (check every hour)
-	updateTicker := time.NewTicker(1 * time.Hour)
-	defer updateTicker.Stop()
-
 	logger.Info("Agent started successfully")
 
 	// Simple main execution loop
@@ -179,9 +149,6 @@ func main() {
 			if err := pipelineProcessor.Process(ctx); err != nil {
 				logger.Error("Failed to process metrics pipeline", zap.Error(err))
 			}
-
-		case <-updateTicker.C:
-			checkForUpdates(logger)
 
 		case sig := <-sigChan:
 			logger.Info("Received shutdown signal, cleaning up", zap.String("signal", sig.String()))
