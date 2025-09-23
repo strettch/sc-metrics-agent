@@ -74,7 +74,6 @@ case "$ACTION" in
         # Remove binary files installed by the package
         echo "Removing binary files..."
         rm -f /usr/bin/sc-metrics-agent 2>/dev/null || true
-        rm -f /usr/bin/sc-metrics-agent 2>/dev/null || true
         rm -f /usr/bin/sc-metrics-agent-updater.sh 2>/dev/null || true
         
         # Update APT package index to remove references to the repository
