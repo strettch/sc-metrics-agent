@@ -619,6 +619,5 @@ main() {
     echo "   curl -sSL https://${REPO_DOMAIN}/${REPO_URL_PATH}/install.sh | sudo bash"
     echo "========================================================================"
 }
-
 # Run the main function with all arguments
 main "$@"
