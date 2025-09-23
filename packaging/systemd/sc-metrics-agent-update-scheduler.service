@@ -22,7 +22,7 @@ TimeoutStopSec=30
 # Environment
 Environment="DEBIAN_FRONTEND=noninteractive"
 Environment="SC_AGENT_AUTO_UPDATER=1"
-Environment="PATH=/usr/local/sbin:/usr/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 [Install]
 WantedBy=multi-user.target

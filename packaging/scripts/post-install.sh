@@ -122,7 +122,19 @@ fi
 
 # Verify services are running (only if we started them)
 if [ "${SC_AGENT_AUTO_UPDATER:-0}" != "1" ]; then
-    MAIN_STATUS=$(systemctl is-active "${SERVICE_NAME}" 2>/dev/null || echo "inactive")
+    # Allow some time for service to fully activate
+    for i in {1..5}; do
+        MAIN_STATUS=$(systemctl is-active "${SERVICE_NAME}" 2>/dev/null || echo "inactive")
+        if [ "$MAIN_STATUS" = "active" ] || [ "$MAIN_STATUS" = "activating" ]; then
+            break
+        fi
+        sleep 1
+    done
+    
+    if [ "$MAIN_STATUS" = "activating" ]; then
+        MAIN_STATUS="active (starting)"
+    fi
+    
     TIMER_STATUS=$(systemctl is-active "${UPDATER_TIMER}" 2>/dev/null || echo "inactive")
 else
     MAIN_STATUS="managed-by-updater"
@@ -149,7 +161,7 @@ echo ""
 # Exit with appropriate code
 if [ "${SC_AGENT_AUTO_UPDATER:-0}" = "1" ]; then
     exit 0
-elif [ "$MAIN_STATUS" != "active" ] || [ "$TIMER_STATUS" != "active" ]; then
+elif [[ "$MAIN_STATUS" == "inactive" || "$MAIN_STATUS" == "failed" ]] || [[ "$TIMER_STATUS" == "inactive" || "$TIMER_STATUS" == "failed" ]]; then
     exit 1
 fi
 exit 0
