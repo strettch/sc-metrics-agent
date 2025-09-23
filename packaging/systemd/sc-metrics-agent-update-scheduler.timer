@@ -6,7 +6,10 @@ Documentation=https://docs.cloud.strettch.com/agents/sc-metrics-agent
 # Start 5 minutes after boot
 OnBootSec=5min
 
-# Run every 1 hour
+# Run every 30 seconds after the timer is activated
+OnActiveSec=30s
+
+# Run every 30 seconds after the last run
 OnUnitActiveSec=30s
 
 

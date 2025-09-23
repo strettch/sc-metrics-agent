@@ -10,14 +10,13 @@ Type=simple
 User=root
 Group=root
 Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=/usr/bin/start-sc-metrics-agent.sh
+ExecStart=/usr/bin/sc-metrics-agent
 Restart=always
 RestartSec=30
 KillMode=mixed
 KillSignal=SIGTERM
 
 # Environment
-Environment="PATH=/usr/local/sbin:/usr/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 EnvironmentFile=-/etc/sc-metrics-agent/environment
 
 # Logging
