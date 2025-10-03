@@ -83,7 +83,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		CollectionInterval:      30 * time.Second,
 		HTTPTimeout:             30 * time.Second,
-	    MetadataServiceEndpoint: "http://169.254.169.254/metadata/v1/auth-token",
+	    MetadataServiceEndpoint: "http://172.22.10.12:8000/metadata/v1/auth-token",
 		VMID:               vmID,
 		Labels:             make(map[string]string),
 		Collectors: CollectorConfig{
