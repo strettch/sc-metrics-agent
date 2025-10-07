@@ -101,6 +101,7 @@ setup_variables() {
     UPDATER_SERVICE="packaging/systemd/${PACKAGE_NAME}-update-scheduler.service"
     UPDATER_TIMER="packaging/systemd/${PACKAGE_NAME}-update-scheduler.timer"
     UPDATER_SCRIPT="packaging/scripts/${PACKAGE_NAME}-updater.sh"
+    CONFIG_DOWNLOAD_SCRIPT="packaging/scripts/download-config.sh"
     POSTINSTALL_SCRIPT="packaging/scripts/post-install.sh"
     PREREMOVE_SCRIPT="packaging/scripts/pre-remove.sh"
 }
@@ -176,17 +177,18 @@ verify_required_files() {
         "$UPDATER_SERVICE"
         "$UPDATER_TIMER"
         "$UPDATER_SCRIPT"
+        "$CONFIG_DOWNLOAD_SCRIPT"
         "$POSTINSTALL_SCRIPT"
         "$PREREMOVE_SCRIPT"
     )
-    
+
     for file in "${required_files[@]}"; do
         if [[ ! -f "$file" ]]; then
             log_error "Required packaging file not found: ${file}"
             return 1
         fi
     done
-    
+
     log_success "All packaging files verified"
     return 0
 }
@@ -216,16 +218,20 @@ build_deb_packages() {
         
         STAGING_DIR="/tmp/${PACKAGE_NAME}-build-${arch}"
         rm -rf "${STAGING_DIR}"
-        mkdir -p "${STAGING_DIR}/usr/bin" "${STAGING_DIR}/etc/systemd/system"
-        
+        mkdir -p "${STAGING_DIR}/usr/bin" "${STAGING_DIR}/usr/lib/${PACKAGE_NAME}" "${STAGING_DIR}/etc/systemd/system"
+
         # Copy binary
         cp "build/${PACKAGE_NAME}-${arch}" "${STAGING_DIR}/usr/bin/${PACKAGE_NAME}"
         chmod +x "${STAGING_DIR}/usr/bin/${PACKAGE_NAME}"
-        
+
         # Copy updater script
         cp "${UPDATER_SCRIPT}" "${STAGING_DIR}/usr/bin/${PACKAGE_NAME}-updater.sh"
         chmod +x "${STAGING_DIR}/usr/bin/${PACKAGE_NAME}-updater.sh"
-        
+
+        # Copy config download script
+        cp "${CONFIG_DOWNLOAD_SCRIPT}" "${STAGING_DIR}/usr/lib/${PACKAGE_NAME}/download-config.sh"
+        chmod +x "${STAGING_DIR}/usr/lib/${PACKAGE_NAME}/download-config.sh"
+
         # Copy systemd files
         cp "${SERVICE_FILE}" "${STAGING_DIR}/etc/systemd/system/"
         cp "${UPDATER_SERVICE}" "${STAGING_DIR}/etc/systemd/system/"
