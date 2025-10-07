@@ -8,13 +8,13 @@ set -euo pipefail
 # Configuration
 readonly PACKAGE_NAME="sc-metrics-agent"
 readonly LOG_PREFIX="[SC-Metrics-Agent-Updater]"
-readonly LOCK_FILE="/var/lock/sc-metrics-agent-updater.lock"
-readonly CONFIG_FILE="/etc/${PACKAGE_NAME}/config.yaml"
+readonly LOCK_FILE="/var/run/sc-metrics-agent-updater.lock"
 readonly MAX_RETRIES=3
 readonly RETRY_DELAY=30
+readonly CONFIG_DOWNLOAD_SCRIPT="/usr/lib/sc-metrics-agent/download-config.sh"
 
 # Ensure we're running as root
-if [ "$EUID" -ne 0 ]; then 
+if [ "$EUID" -ne 0 ]; then
     echo "${LOG_PREFIX} Error: Must run as root" >&2
     exit 1
 fi
@@ -25,7 +25,7 @@ log() {
     shift
     local message="$@"
     local timestamp=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-    
+
     # Use appropriate output stream
     case $level in
         ERROR|WARN)
@@ -37,35 +37,34 @@ log() {
     esac
 }
 
-# Cleanup function (preserving original atomic lock approach)
+# Cleanup function
 cleanup() {
-    rmdir "${LOCK_FILE}" 2>/dev/null || true
+    rm -f "${LOCK_FILE}"
 }
 
 # Set up exit trap
 trap cleanup EXIT INT TERM
 
-# Check if another instance is running (using atomic mkdir approach from original)
-if ! mkdir "${LOCK_FILE}" 2>/dev/null; then
-    log "WARN" "Another updater instance is running"
-    exit 0
+# Check if another instance is running
+if [ -f "${LOCK_FILE}" ]; then
+    # Check if the PID in lock file is still running
+    if [ -r "${LOCK_FILE}" ]; then
+        LOCK_PID=$(cat "${LOCK_FILE}" 2>/dev/null || echo "")
+        if [ -n "${LOCK_PID}" ] && kill -0 "${LOCK_PID}" 2>/dev/null; then
+            log "WARN" "Another updater instance is running (PID: ${LOCK_PID})"
+            exit 0
+        else
+            log "INFO" "Removing stale lock file"
+            rm -f "${LOCK_FILE}"
+        fi
+    fi
 fi
+
+# Create lock file
+echo $$ > "${LOCK_FILE}"
 
 # Start update process
 log "INFO" "Starting update check for ${PACKAGE_NAME}"
-
-# Download latest agent configuration
-CONFIG_DOWNLOAD_SCRIPT="/usr/lib/${PACKAGE_NAME}/download-config.sh"
-if [ -x "${CONFIG_DOWNLOAD_SCRIPT}" ]; then
-    log "INFO" "Downloading latest agent configuration..."
-    if "${CONFIG_DOWNLOAD_SCRIPT}"; then
-        log "INFO" "Agent configuration updated successfully"
-    else
-        log "WARN" "Failed to download agent configuration, continuing with existing config"
-    fi
-else
-    log "WARN" "Config download script not found at ${CONFIG_DOWNLOAD_SCRIPT}"
-fi
 
 # Check OS compatibility
 if [ ! -f /etc/debian_version ]; then
@@ -207,6 +206,19 @@ for attempt in $(seq 1 ${MAX_RETRIES}); do
         
         if [ "${NEW_VERSION}" != "${CURRENT_VERSION}" ] && [ "${NEW_VERSION}" != "unknown" ]; then
             log "INFO" "Update successful: ${CURRENT_VERSION} -> ${NEW_VERSION}"
+
+            # Download latest agent configuration
+            log "INFO" "Downloading latest agent configuration..."
+            if [ -x "${CONFIG_DOWNLOAD_SCRIPT}" ]; then
+                if "${CONFIG_DOWNLOAD_SCRIPT}"; then
+                    log "INFO" "Agent configuration updated successfully"
+                else
+                    log "WARN" "Failed to download agent configuration, continuing with existing config"
+                fi
+            else
+                log "WARN" "Config download script not found"
+            fi
+
             UPDATE_SUCCESS=true
             break
         else

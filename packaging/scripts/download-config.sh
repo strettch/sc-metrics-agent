@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
-# SC-Metrics-Agent Configuration Downloader
-# Purpose: Download latest agent.yaml from repository server
-# Triggered by: post-install.sh and sc-metrics-agent-updater.sh
+# SC-Metrics-Agent Config Download Script
+# Purpose: Download the latest agent configuration from repository
+# Usage: Called by post-install.sh and sc-metrics-agent-updater.sh
+# Exit codes: 0=success, 1=download failed (non-critical), 2=critical error
 
 set -euo pipefail
 
-# Configuration
-readonly CONFIG_DIR="/etc/strettchcloud/config"
-readonly CONFIG_FILE="${CONFIG_DIR}/agent.yaml"
-readonly REPO_URL="${SC_CONFIG_REPO_URL:-https://repo.cloud.strettch.com/agent/config}"
-readonly LOG_PREFIX="[SC-Metrics-Agent-Config]"
-readonly MAX_RETRIES=3
-readonly RETRY_DELAY=5
-readonly CURL_TIMEOUT=30
+# === Variables ===
+CONFIG_DIR="/etc/strettchcloud/config"
+CONFIG_FILE="${CONFIG_DIR}/agent.yaml"
+REPO_URL="${SC_CONFIG_REPO_URL:-https://repo.cloud.strettch.com/agent/config}"
+LOG_PREFIX="[SC-Metrics-Agent-Config]"
 
 # Logging function
 log() {
@@ -31,97 +29,86 @@ log() {
     esac
 }
 
-# Detect environment from existing config or environment variable
-detect_environment() {
-    local env="${SC_ENVIRONMENT:-}"
+log "INFO" "Starting agent configuration download..."
 
-    # If not set via env var, try to read from existing config
-    if [ -z "$env" ] && [ -f "${CONFIG_FILE}" ]; then
-        env=$(grep -E "^[[:space:]]*environment:" "${CONFIG_FILE}" | awk '{print $2}' | tr -d '"' || echo "")
+# === Detect existing environment ===
+ENVIRONMENT=""
+
+if [ -f "${CONFIG_FILE}" ]; then
+    log "INFO" "Detecting existing environment from ${CONFIG_FILE}..."
+    # Try to extract environment from the existing config
+    EXISTING_ENV=$(grep -E '^\s*environment:' "${CONFIG_FILE}" 2>/dev/null | head -n1 | awk '{print $2}' | tr -d '"' | tr -d "'" || echo "")
+
+    if [ -n "${EXISTING_ENV}" ]; then
+        ENVIRONMENT="${EXISTING_ENV}"
+        log "INFO" "Detected existing environment: ${ENVIRONMENT}"
     fi
+fi
 
-    # Default to production if still not set
-    if [ -z "$env" ]; then
-        env="production"
-        log "INFO" "No environment specified, defaulting to: ${env}"
-    else
-        log "INFO" "Detected environment: ${env}"
-    fi
+# === Fallback to ENVIRONMENT variable or default ===
+if [ -z "${ENVIRONMENT}" ]; then
+    ENVIRONMENT="${SC_ENVIRONMENT:-production}"
+    log "INFO" "No existing environment detected, using: ${ENVIRONMENT}"
+fi
 
-    echo "$env"
-}
+log "INFO" "Target environment: ${ENVIRONMENT}"
 
-# Download configuration file
-download_config() {
-    local environment=$(detect_environment)
-    local config_url="${REPO_URL}/${environment}/agent.yaml"
-    local temp_file="${CONFIG_FILE}.tmp"
+# === Ensure config directory exists ===
+if ! mkdir -p "${CONFIG_DIR}" 2>/dev/null; then
+    log "ERROR" "Failed to create config directory: ${CONFIG_DIR}"
+    exit 2
+fi
 
-    log "INFO" "Downloading configuration from: ${config_url}"
+# === Create secure temporary file ===
+TMP_FILE=$(mktemp /tmp/strettch-agent-config.XXXXXX)
+trap "rm -f ${TMP_FILE}" EXIT INT TERM
 
-    # Create config directory if it doesn't exist
-    if [ ! -d "${CONFIG_DIR}" ]; then
-        log "INFO" "Creating config directory: ${CONFIG_DIR}"
-        mkdir -p "${CONFIG_DIR}"
-        chmod 755 "${CONFIG_DIR}"
-    fi
+# === Download config to temporary file ===
+log "INFO" "Downloading agent configuration from ${REPO_URL}/${ENVIRONMENT}/agent.yaml"
 
-    # Download with retries
-    for attempt in $(seq 1 ${MAX_RETRIES}); do
-        log "INFO" "Download attempt ${attempt}/${MAX_RETRIES}"
+# Use retry logic for robustness
+MAX_RETRIES=3
+RETRY_COUNT=0
+DOWNLOAD_SUCCESS=false
 
-        if curl -f -s -S -L \
-            --max-time ${CURL_TIMEOUT} \
-            --connect-timeout 10 \
-            -o "${temp_file}" \
-            "${config_url}"; then
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if curl -fsSL --connect-timeout 30 --max-time 60 \
+        "${REPO_URL}/${ENVIRONMENT}/agent.yaml" \
+        -o "${TMP_FILE}" 2>&1; then
 
-            # Verify downloaded file is not empty
-            if [ ! -s "${temp_file}" ]; then
-                log "ERROR" "Downloaded file is empty"
-                rm -f "${temp_file}"
-
-                if [ ${attempt} -lt ${MAX_RETRIES} ]; then
-                    log "INFO" "Retrying in ${RETRY_DELAY}s..."
-                    sleep ${RETRY_DELAY}
-                    continue
-                else
-                    return 1
-                fi
-            fi
-
-            # Move temp file to final location
-            mv "${temp_file}" "${CONFIG_FILE}"
-            chmod 644 "${CONFIG_FILE}"
-
+        # Verify file has content
+        if [ -s "${TMP_FILE}" ]; then
+            DOWNLOAD_SUCCESS=true
             log "INFO" "Configuration downloaded successfully"
-            return 0
+            break
         else
-            log "WARN" "Download failed (attempt ${attempt}/${MAX_RETRIES})"
-            rm -f "${temp_file}"
-
-            if [ ${attempt} -lt ${MAX_RETRIES} ]; then
-                log "INFO" "Retrying in ${RETRY_DELAY}s..."
-                sleep ${RETRY_DELAY}
-            fi
+            log "WARN" "Downloaded file is empty"
         fi
-    done
+    fi
 
-    log "ERROR" "Failed to download configuration after ${MAX_RETRIES} attempts"
-    return 1
-}
-
-# Main execution
-main() {
-    log "INFO" "Starting configuration download"
-
-    if download_config; then
-        log "INFO" "Configuration download completed successfully"
-        exit 0
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+        log "WARN" "Download failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+        sleep 5
     else
-        log "ERROR" "Configuration download failed"
+        log "ERROR" "Failed to download configuration after ${MAX_RETRIES} attempts"
+        log "WARN" "Agent will continue with existing configuration if available"
         exit 1
     fi
-}
+done
 
-main "$@"
+if [ "${DOWNLOAD_SUCCESS}" = true ]; then
+    # === Move into place and set permissions ===
+    if mv "${TMP_FILE}" "${CONFIG_FILE}"; then
+        chmod 644 "${CONFIG_FILE}"
+        log "INFO" "Configuration updated successfully: ${CONFIG_FILE}"
+        log "INFO" "Environment: ${ENVIRONMENT}"
+        exit 0
+    else
+        log "ERROR" "Failed to move config file to ${CONFIG_FILE}"
+        exit 2
+    fi
+else
+    log "ERROR" "Configuration download failed"
+    exit 1
+fi

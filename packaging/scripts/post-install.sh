@@ -13,6 +13,7 @@ readonly UPDATER_TIMER="sc-metrics-agent-update-scheduler.timer"
 # Define directories
 readonly RUNTIME_DIR="/var/run/sc-metrics-agent"
 readonly CONFIG_DIR="/etc/sc-metrics-agent"
+readonly CONFIG_DOWNLOAD_SCRIPT="/usr/lib/sc-metrics-agent/download-config.sh"
 
 # Helper function for colored output
 print_status() {
@@ -30,22 +31,8 @@ echo "Configuring SC-Metrics-Agent..."
 
 # Create necessary directories with proper ownership
 print_status "info" "Creating required directories..."
-install -d -m 750 "$RUNTIME_DIR" 
+install -d -m 750 "$RUNTIME_DIR"
 install -d -m 755 "$CONFIG_DIR"
-
-# Download agent configuration
-CONFIG_DOWNLOAD_SCRIPT="/usr/lib/${PACKAGE_NAME}/download-config.sh"
-if [ -x "${CONFIG_DOWNLOAD_SCRIPT}" ]; then
-    print_status "info" "Downloading agent configuration..."
-    if ! "${CONFIG_DOWNLOAD_SCRIPT}"; then
-        print_status "error" "Failed to download agent configuration"
-        echo "Please ensure SC_ENVIRONMENT is set or /etc/strettchcloud/config/agent.yaml exists"
-        exit 1
-    fi
-else
-    print_status "error" "Config download script not found at ${CONFIG_DOWNLOAD_SCRIPT}"
-    exit 1
-fi
 
 # Create default config if it doesn't exist
 if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
@@ -54,6 +41,19 @@ if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
 # SC-Metrics-Agent Configuration
 EOF
     chmod 644 "${CONFIG_DIR}/config.yaml"
+fi
+
+# Download latest agent configuration from repository
+print_status "info" "Downloading latest agent configuration..."
+if [ -x "${CONFIG_DOWNLOAD_SCRIPT}" ]; then
+    if ! "${CONFIG_DOWNLOAD_SCRIPT}"; then
+        print_status "error" "Failed to download agent configuration"
+        exit 1
+    fi
+    print_status "success" "Agent configuration downloaded successfully"
+else
+    print_status "error" "Config download script not found at ${CONFIG_DOWNLOAD_SCRIPT}"
+    exit 1
 fi
 
 # Reload systemd to recognize new service files
