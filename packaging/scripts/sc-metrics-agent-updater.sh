@@ -54,6 +54,19 @@ fi
 # Start update process
 log "INFO" "Starting update check for ${PACKAGE_NAME}"
 
+# Download latest agent configuration
+CONFIG_DOWNLOAD_SCRIPT="/usr/lib/${PACKAGE_NAME}/download-config.sh"
+if [ -x "${CONFIG_DOWNLOAD_SCRIPT}" ]; then
+    log "INFO" "Downloading latest agent configuration..."
+    if "${CONFIG_DOWNLOAD_SCRIPT}"; then
+        log "INFO" "Agent configuration updated successfully"
+    else
+        log "WARN" "Failed to download agent configuration, continuing with existing config"
+    fi
+else
+    log "WARN" "Config download script not found at ${CONFIG_DOWNLOAD_SCRIPT}"
+fi
+
 # Check OS compatibility
 if [ ! -f /etc/debian_version ]; then
     log "ERROR" "Not a Debian/Ubuntu system"

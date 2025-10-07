@@ -33,6 +33,20 @@ print_status "info" "Creating required directories..."
 install -d -m 750 "$RUNTIME_DIR" 
 install -d -m 755 "$CONFIG_DIR"
 
+# Download agent configuration
+CONFIG_DOWNLOAD_SCRIPT="/usr/lib/${PACKAGE_NAME}/download-config.sh"
+if [ -x "${CONFIG_DOWNLOAD_SCRIPT}" ]; then
+    print_status "info" "Downloading agent configuration..."
+    if ! "${CONFIG_DOWNLOAD_SCRIPT}"; then
+        print_status "error" "Failed to download agent configuration"
+        echo "Please ensure SC_ENVIRONMENT is set or /etc/strettchcloud/config/agent.yaml exists"
+        exit 1
+    fi
+else
+    print_status "error" "Config download script not found at ${CONFIG_DOWNLOAD_SCRIPT}"
+    exit 1
+fi
+
 # Create default config if it doesn't exist
 if [ ! -f "${CONFIG_DIR}/config.yaml" ]; then
     print_status "info" "Creating default configuration..."
