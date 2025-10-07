@@ -13,6 +13,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// AgentConfig represents the agent.yaml configuration structure
+type AgentConfig struct {
+	MetadataService struct {
+		BaseURL string `yaml:"base_url"`
+	} `yaml:"metadata_service"`
+}
+
+const agentConfigPath = "/etc/strettchcloud/config/agent.yaml"
+
 // Config represents the agent configuration
 type Config struct {
 	// Collection settings
@@ -75,17 +84,51 @@ type CollectorConfig struct {
 	Schedstat bool `yaml:"schedstat" json:"schedstat"`
 }
 
+// readMetadataBaseURL reads the metadata service base URL from agent.yaml
+func readMetadataBaseURL() (string, error) {
+	// Use SC_AGENT_CONFIG if set, otherwise use default path
+	configPath := agentConfigPath
+	if envPath := os.Getenv("SC_AGENT_CONFIG"); envPath != "" {
+		configPath = envPath
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read agent config file %s: %w", configPath, err)
+	}
+
+	var config AgentConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return "", fmt.Errorf("failed to parse agent config: %w", err)
+	}
+
+	if config.MetadataService.BaseURL == "" {
+		return "", fmt.Errorf("metadata_service.base_url not found in agent config")
+	}
+
+	return config.MetadataService.BaseURL, nil
+}
+
 // DefaultConfig returns a configuration with sensible defaults
 func DefaultConfig() *Config {
 	vmID := getVMIDFromDMIDecode()
 	// If empty, it will be caught in validation
 
+	// Read metadata service base URL from agent.yaml
+	metadataBaseURL, err := readMetadataBaseURL()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to read metadata service configuration: %v", err))
+	}
+
+	// Construct full metadata endpoint URL
+	metadataEndpoint := metadataBaseURL + "/metadata/v1/auth-token"
+
 	return &Config{
 		CollectionInterval:      30 * time.Second,
 		HTTPTimeout:             30 * time.Second,
-	    MetadataServiceEndpoint: "http://172.22.10.12:8000/metadata/v1/auth-token",
-		VMID:               vmID,
-		Labels:             make(map[string]string),
+		MetadataServiceEndpoint: metadataEndpoint,
+		VMID:                    vmID,
+		Labels:                  make(map[string]string),
 		Collectors: CollectorConfig{
 			// Process metrics (required for this story)
 			Processes: true,
