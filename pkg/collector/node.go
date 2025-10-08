@@ -211,7 +211,7 @@ type cpuCollector struct {
 }
 
 func (c *cpuCollector) Describe(ch chan<- *prometheus.Desc) {
-	c.desc = prometheus.NewDesc("node_cpu_seconds_total", "Seconds the CPUs spent in each mode.", []string{"cpu", "mode"}, nil)
+	c.desc = prometheus.NewDesc("node_cpu_seconds_total", "Seconds the CPUs spent in each mode.", []string{"mode"}, nil)
 	ch <- c.desc
 }
 
@@ -222,21 +222,22 @@ func (c *cpuCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	for i, cpu := range stat.CPU {
-		cpuName := fmt.Sprintf("cpu%d", i)
-		if i == 0 {
-			cpuName = "cpu"
-		}
-
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.User, cpuName, "user")
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Nice, cpuName, "nice")
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.System, cpuName, "system")
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Idle, cpuName, "idle")
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Iowait, cpuName, "iowait")
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.IRQ, cpuName, "irq")
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.SoftIRQ, cpuName, "softirq")
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Steal, cpuName, "steal")
+	// Only emit aggregate CPU stats (first entry in stat.CPU is the sum of all cores)
+	if len(stat.CPU) == 0 {
+		c.logger.Debug("No CPU stats available")
+		return
 	}
+
+	cpu := stat.CPU[0] // First entry is aggregate across all cores
+
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.User, "user")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Nice, "nice")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.System, "system")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Idle, "idle")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Iowait, "iowait")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.IRQ, "irq")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.SoftIRQ, "softirq")
+	ch <- prometheus.MustNewConstMetric(c.desc, prometheus.CounterValue, cpu.Steal, "steal")
 }
 
 type memoryCollector struct {
