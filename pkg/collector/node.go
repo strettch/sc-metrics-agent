@@ -15,6 +15,17 @@ import (
 	"github.com/strettch/sc-metrics-agent/pkg/config"
 )
 
+// ignoredFSTypes lists filesystem types to exclude from metrics collection
+var ignoredFSTypes = map[string]bool{
+	"autofs": true, "binfmt_misc": true, "cgroup": true, "cgroup2": true,
+	"configfs": true, "debugfs": true, "devpts": true, "devtmpfs": true,
+	"efivarfs": true, "fusectl": true, "hugetlbfs": true, "mqueue": true,
+	"nsfs": true, "overlay": true, "proc": true, "procfs": true,
+	"pstore": true, "rpc_pipefs": true, "securityfs": true, "selinuxfs": true,
+	"squashfs": true, "sysfs": true, "tmpfs": true, "tracefs": true,
+	"nfs": true, "nfs4": true, "cifs": true, "smb": true,
+}
+
 // Collector defines the interface for metric collectors
 type Collector interface {
 	Collect(ctx context.Context) ([]*dto.MetricFamily, error)
@@ -411,12 +422,19 @@ func (c *networkCollector) Collect(ch chan<- prometheus.Metric) {
 type filesystemCollector struct {
 	procFS procfs.FS
 	logger *zap.Logger
-	desc   *prometheus.Desc
+	descs  map[string]*prometheus.Desc
 }
 
 func (c *filesystemCollector) Describe(ch chan<- *prometheus.Desc) {
-	c.desc = prometheus.NewDesc("node_filesystem_size_bytes", "Filesystem size in bytes.", []string{"device", "fstype", "mountpoint"}, nil)
-	ch <- c.desc
+	c.descs = map[string]*prometheus.Desc{
+		"size":  prometheus.NewDesc("node_filesystem_size_bytes", "Filesystem size in bytes.", []string{"device", "fstype", "mountpoint"}, nil),
+		"free":  prometheus.NewDesc("node_filesystem_free_bytes", "Filesystem free space in bytes.", []string{"device", "fstype", "mountpoint"}, nil),
+		"avail": prometheus.NewDesc("node_filesystem_avail_bytes", "Filesystem space available to non-root users in bytes.", []string{"device", "fstype", "mountpoint"}, nil),
+	}
+
+	for _, desc := range c.descs {
+		ch <- desc
+	}
 }
 
 func (c *filesystemCollector) Collect(ch chan<- prometheus.Metric) {
@@ -427,35 +445,32 @@ func (c *filesystemCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, mount := range mounts {
-		// Skip virtual filesystems and special mounts
-		if strings.HasPrefix(mount.FSType, "proc") ||
-			strings.HasPrefix(mount.FSType, "sys") ||
-			strings.HasPrefix(mount.FSType, "dev") ||
-			strings.HasPrefix(mount.FSType, "tmp") ||
-			strings.HasPrefix(mount.FSType, "cgroup") ||
-			strings.HasPrefix(mount.FSType, "securityfs") ||
-			strings.HasPrefix(mount.FSType, "bpf") ||
-			strings.HasPrefix(mount.FSType, "pstore") ||
-			strings.HasPrefix(mount.FSType, "efivar") ||
-			strings.HasPrefix(mount.FSType, "configfs") ||
-			strings.HasPrefix(mount.FSType, "fuse") ||
-			mount.FSType == "overlay" ||
-			mount.FSType == "squashfs" {
+		if ignoredFSTypes[mount.FSType] {
+			c.logger.Debug("Skipping ignored filesystem type",
+				zap.String("fstype", mount.FSType),
+				zap.String("mountpoint", mount.MountPoint))
 			continue
 		}
 
-		// Get filesystem stats using syscall.Statfs
+		if !strings.HasPrefix(mount.Source, "/dev/") {
+			c.logger.Debug("Skipping non-device filesystem", zap.String("source", mount.Source))
+			continue
+		}
+
 		var stat syscall.Statfs_t
 		if err := syscall.Statfs(mount.MountPoint, &stat); err != nil {
-			c.logger.Debug("Failed to get filesystem stats", 
-				zap.String("mountpoint", mount.MountPoint), 
+			c.logger.Debug("Failed to get filesystem stats",
+				zap.String("mountpoint", mount.MountPoint),
 				zap.Error(err))
 			continue
 		}
 
-		// Calculate total size in bytes
 		totalSize := float64(stat.Blocks * uint64(stat.Bsize))
-		
-		ch <- prometheus.MustNewConstMetric(c.desc, prometheus.GaugeValue, totalSize, mount.Source, mount.FSType, mount.MountPoint)
+		freeSize := float64(stat.Bfree * uint64(stat.Bsize))
+		availSize := float64(stat.Bavail * uint64(stat.Bsize))
+
+		ch <- prometheus.MustNewConstMetric(c.descs["size"], prometheus.GaugeValue, totalSize, mount.Source, mount.FSType, mount.MountPoint)
+		ch <- prometheus.MustNewConstMetric(c.descs["free"], prometheus.GaugeValue, freeSize, mount.Source, mount.FSType, mount.MountPoint)
+		ch <- prometheus.MustNewConstMetric(c.descs["avail"], prometheus.GaugeValue, availSize, mount.Source, mount.FSType, mount.MountPoint)
 	}
 }
