@@ -46,7 +46,9 @@ var ResourceManagerSupportedMetrics = map[string]bool{
 	"node_network_transmit_packets_total": true,
 
 	// Filesystem Metrics
-	"node_filesystem_size_bytes": true,
+	"node_filesystem_size_bytes":  true,
+	"node_filesystem_free_bytes":  true,
+	"node_filesystem_avail_bytes": true,
 }
 
 // TestCollectorGeneratesOnlySupportedMetrics ensures that our collectors
@@ -274,7 +276,7 @@ func TestResourceManagerMetricWhitelist(t *testing.T) {
 	// If this test fails, it means the resource-manager has changed its supported metrics
 	// and this whitelist needs to be updated
 	
-	expectedCount := 20 // Total number of supported metrics as of latest check
+	expectedCount := 22 // Total number of supported metrics as of latest check
 	actualCount := len(ResourceManagerSupportedMetrics)
 	
 	assert.Equal(t, expectedCount, actualCount, 
