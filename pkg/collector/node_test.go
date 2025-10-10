@@ -302,13 +302,13 @@ func TestMockCollectorBehavior(t *testing.T) {
 
 func TestCollectorRegistry(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	// Test that collectors properly register their metrics
 	cfg := config.CollectorConfig{
 		CPU:    true,
 		Memory: true,
 	}
-	
+
 	collector, err := NewSystemCollector(cfg, logger)
 	if err != nil {
 		t.Skip(skipMessageNonLinux)
@@ -318,11 +318,12 @@ func TestCollectorRegistry(t *testing.T) {
 			t.Errorf("Failed to close collector: %v", closeErr)
 		}
 	}()
-	
+
 	// Test that the registry is not nil and contains some metrics
 	// This is implicit through successful collector creation
 	assert.NotNil(t, collector)
-	
+
 	enabled := collector.GetEnabledCollectors()
 	assert.Greater(t, len(enabled), 0, "Should have at least one enabled collector")
 }
+
