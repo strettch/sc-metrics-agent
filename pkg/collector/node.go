@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"net"
 	"strings"
 	"syscall"
 	"time"
@@ -24,6 +25,33 @@ var ignoredFSTypes = map[string]bool{
 	"pstore": true, "rpc_pipefs": true, "securityfs": true, "selinuxfs": true,
 	"squashfs": true, "sysfs": true, "tmpfs": true, "tracefs": true,
 	"nfs": true, "nfs4": true, "cifs": true, "smb": true,
+}
+
+// getInterfaceIPAddress retrieves the first non-loopback IPv4 address of an interface
+func getInterfaceIPAddress(interfaceName string) (string, error) {
+	iface, err := net.InterfaceByName(interfaceName)
+	if err != nil {
+		return "", fmt.Errorf("interface %s not found: %w", interfaceName, err)
+	}
+
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", fmt.Errorf("failed to get addresses: %w", err)
+	}
+
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+
+		ip := ipNet.IP
+		if ip.To4() != nil && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
+			return ip.String(), nil
+		}
+	}
+
+	return "", fmt.Errorf("no valid IPv4 address found on interface %s", interfaceName)
 }
 
 // Collector defines the interface for metric collectors
@@ -389,10 +417,10 @@ type networkCollector struct {
 
 func (c *networkCollector) Describe(ch chan<- *prometheus.Desc) {
 	c.descs = map[string]*prometheus.Desc{
-		"receive_bytes":   prometheus.NewDesc("node_network_receive_bytes_total", "Network device statistic receive_bytes.", []string{"device"}, nil),
-		"transmit_bytes":  prometheus.NewDesc("node_network_transmit_bytes_total", "Network device statistic transmit_bytes.", []string{"device"}, nil),
-		"receive_packets": prometheus.NewDesc("node_network_receive_packets_total", "Network device statistic receive_packets.", []string{"device"}, nil),
-		"transmit_packets": prometheus.NewDesc("node_network_transmit_packets_total", "Network device statistic transmit_packets.", []string{"device"}, nil),
+		"receive_bytes":    prometheus.NewDesc("node_network_receive_bytes_total", "Network device statistic receive_bytes.", []string{"device", "ip_address"}, nil),
+		"transmit_bytes":   prometheus.NewDesc("node_network_transmit_bytes_total", "Network device statistic transmit_bytes.", []string{"device", "ip_address"}, nil),
+		"receive_packets":  prometheus.NewDesc("node_network_receive_packets_total", "Network device statistic receive_packets.", []string{"device", "ip_address"}, nil),
+		"transmit_packets": prometheus.NewDesc("node_network_transmit_packets_total", "Network device statistic transmit_packets.", []string{"device", "ip_address"}, nil),
 	}
 
 	for _, desc := range c.descs {
@@ -408,14 +436,25 @@ func (c *networkCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, dev := range netDev {
-		if dev.Name == "lo" {
-			continue // Skip loopback
+		// Get IP address for this interface
+		ipAddress, err := getInterfaceIPAddress(dev.Name)
+		if err != nil {
+			c.logger.Debug("Failed to get IP address for interface",
+				zap.String("interface", dev.Name),
+				zap.Error(err))
+			ipAddress = "none"
 		}
 
-		ch <- prometheus.MustNewConstMetric(c.descs["receive_bytes"], prometheus.CounterValue, float64(dev.RxBytes), dev.Name)
-		ch <- prometheus.MustNewConstMetric(c.descs["transmit_bytes"], prometheus.CounterValue, float64(dev.TxBytes), dev.Name)
-		ch <- prometheus.MustNewConstMetric(c.descs["receive_packets"], prometheus.CounterValue, float64(dev.RxPackets), dev.Name)
-		ch <- prometheus.MustNewConstMetric(c.descs["transmit_packets"], prometheus.CounterValue, float64(dev.TxPackets), dev.Name)
+		c.logger.Debug("Collecting network metrics",
+			zap.String("interface", dev.Name),
+			zap.String("ip_address", ipAddress),
+			zap.Uint64("rx_bytes", dev.RxBytes),
+			zap.Uint64("tx_bytes", dev.TxBytes))
+
+		ch <- prometheus.MustNewConstMetric(c.descs["receive_bytes"], prometheus.CounterValue, float64(dev.RxBytes), dev.Name, ipAddress)
+		ch <- prometheus.MustNewConstMetric(c.descs["transmit_bytes"], prometheus.CounterValue, float64(dev.TxBytes), dev.Name, ipAddress)
+		ch <- prometheus.MustNewConstMetric(c.descs["receive_packets"], prometheus.CounterValue, float64(dev.RxPackets), dev.Name, ipAddress)
+		ch <- prometheus.MustNewConstMetric(c.descs["transmit_packets"], prometheus.CounterValue, float64(dev.TxPackets), dev.Name, ipAddress)
 	}
 }
 
