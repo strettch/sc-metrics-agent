@@ -381,6 +381,33 @@ func (c *diskStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *diskStatsCollector) Collect(ch chan<- prometheus.Metric) {
+	// Get mounted devices to filter disk stats
+	mounts, err := procfs.GetMounts()
+	if err != nil {
+		c.logger.Debug("Failed to get mount information", zap.Error(err))
+		return
+	}
+
+	// Build a set of valid device names from mounts
+	validDevices := make(map[string]bool)
+	for _, mount := range mounts {
+		if ignoredFSTypes[mount.FSType] {
+			c.logger.Debug("Skipping ignored filesystem type for disk I/O",
+				zap.String("fstype", mount.FSType),
+				zap.String("device", mount.Source))
+			continue
+		}
+
+		if !strings.HasPrefix(mount.Source, "/dev/") {
+			c.logger.Debug("Skipping non-device filesystem for disk I/O", zap.String("source", mount.Source))
+			continue
+		}
+
+		// Extract device name without /dev/ prefix
+		deviceName := strings.TrimPrefix(mount.Source, "/dev/")
+		validDevices[deviceName] = true
+	}
+
 	// Use blockdevice package to get disk stats
 	blockFS, err := blockdevice.NewFS("/proc", "/sys")
 	if err != nil {
@@ -395,10 +422,10 @@ func (c *diskStatsCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for _, stat := range diskStats {
-		// Skip loop devices, ram disks, and other virtual devices
-		if strings.HasPrefix(stat.DeviceName, "loop") ||
-			strings.HasPrefix(stat.DeviceName, "ram") ||
-			strings.HasPrefix(stat.DeviceName, "dm-") {
+		// Only collect metrics for valid mounted devices
+		if !validDevices[stat.DeviceName] {
+			c.logger.Debug("Skipping device - not in valid mounted devices",
+				zap.String("device", stat.DeviceName))
 			continue
 		}
 
