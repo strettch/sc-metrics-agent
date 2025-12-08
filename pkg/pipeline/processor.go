@@ -68,11 +68,11 @@ func NewProcessor(
 
 // Process executes the complete pipeline: Collect -> Decorate -> Aggregate -> Write
 func (p *Processor) Process(ctx context.Context) error {
-	// Get the current auth token
-	authToken := p.authMgr.GetCurrentToken()
-	if authToken == "" {
+	// Get the current auth token with retry
+	authToken, err := p.getAuthTokenWithRetry(ctx)
+	if err != nil {
 		p.lastError = "auth token is empty"
-		return fmt.Errorf("auth token is empty - refresh may have failed")
+		return err
 	}
 
 	startTime := time.Now()
@@ -169,6 +169,67 @@ func (p *Processor) Process(ctx context.Context) error {
 		zap.Duration("processing_time", processingTime))
 
 	return nil
+}
+
+// getAuthTokenWithRetry attempts to get a valid auth token with retry and exponential backoff.
+func (p *Processor) getAuthTokenWithRetry(ctx context.Context) (string, error) {
+	const (
+		maxRetries    = 3
+		initialDelay  = 500 * time.Millisecond
+		maxDelay      = 5 * time.Second
+		backoffFactor = 2
+	)
+
+	token := p.authMgr.GetCurrentToken()
+	if token != "" {
+		return token, nil
+	}
+
+	p.logger.Warn("Auth token is empty, attempting to refresh")
+	delay := initialDelay
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+
+		p.logger.Debug("Attempting token refresh",
+			zap.Int("attempt", attempt),
+			zap.Int("max_retries", maxRetries))
+
+		if err := p.authMgr.EnsureValidToken(ctx); err != nil {
+			p.logger.Warn("Token refresh attempt failed",
+				zap.Int("attempt", attempt),
+				zap.Error(err))
+		}
+
+		token = p.authMgr.GetCurrentToken()
+		if token != "" {
+			p.logger.Info("Auth token obtained after retry",
+				zap.Int("attempt", attempt))
+			return token, nil
+		}
+
+		if attempt < maxRetries {
+			p.logger.Debug("Waiting before next retry",
+				zap.Duration("delay", delay))
+
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(delay):
+			}
+
+			delay *= backoffFactor
+			if delay > maxDelay {
+				delay = maxDelay
+			}
+		}
+	}
+
+	return "", fmt.Errorf("auth token is empty after %d retries - refresh may have failed", maxRetries)
 }
 
 // WriteDiagnostics sends diagnostic information to the ingestor
