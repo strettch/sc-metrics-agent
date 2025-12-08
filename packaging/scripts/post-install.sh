@@ -173,9 +173,20 @@ echo "  • Manual update:  systemctl start ${UPDATER_SERVICE}"
 echo ""
 
 # Exit with appropriate code
+# Don't fail installation if service isn't active - it may not have a proper environment yet
+# (e.g., during image build with Packer, no IaaS metadata available).
+# The service is enabled and systemd will start it on boot.
 if [ "${SC_AGENT_AUTO_UPDATER:-0}" = "1" ]; then
     exit 0
-elif [[ "$MAIN_STATUS" == "inactive" || "$MAIN_STATUS" == "failed" ]] || [[ "$TIMER_STATUS" == "inactive" || "$TIMER_STATUS" == "failed" ]]; then
-    exit 1
 fi
+
+# Log warning if services didn't start, but don't fail the installation
+if [ "$MAIN_STATUS" != "active" ]; then
+    print_status "warning" "Main service not active (may be normal during image build)"
+fi
+
+if [ "$TIMER_STATUS" != "active" ]; then
+    print_status "warning" "Update timer not active (may be normal during image build)"
+fi
+
 exit 0
