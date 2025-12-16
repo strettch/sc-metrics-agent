@@ -5,25 +5,33 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
 	"github.com/strettch/sc-metrics-agent/pkg/clients/metadata"
 	"github.com/strettch/sc-metrics-agent/pkg/clients/tsclient"
 	"github.com/strettch/sc-metrics-agent/pkg/collector"
 	"github.com/strettch/sc-metrics-agent/pkg/decorator"
+	"go.uber.org/zap"
+)
+
+const (
+	heartbeatInterval = 10 * time.Minute
 )
 
 // Processor implements the Collect -> Decorate -> Aggregate -> Write pipeline
 type Processor struct {
-	collector        collector.Collector
-	decorator        decorator.MetricDecorator
-	aggregator       aggregate.Aggregator
-	writer           tsclient.MetricWriter
-	authMgr          *metadata.AuthManager // External auth handling
-	logger           *zap.Logger
-	lastProcessTime  time.Time
-	lastMetricCount  int
-	lastError        string
+	collector       collector.Collector
+	decorator       decorator.MetricDecorator
+	aggregator      aggregate.Aggregator
+	writer          tsclient.MetricWriter
+	authMgr         *metadata.AuthManager // External auth handling
+	version         string
+	heartbeatTicker *time.Ticker
+	ctx             context.Context    // Lifecycle context
+	cancel          context.CancelFunc // Lifecycle cancel
+	logger          *zap.Logger
+	lastProcessTime time.Time
+	lastMetricCount int
+	lastError       string
 }
 
 // ProcessingStats holds statistics about pipeline processing
@@ -43,28 +51,39 @@ func NewProcessor(
 	aggregator aggregate.Aggregator,
 	writer tsclient.MetricWriter,
 	authMgr *metadata.AuthManager,
+	version string,
 	logger *zap.Logger,
 ) *Processor {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	p := &Processor{
-		collector:  collector,
-		decorator:  decorator,
-		aggregator: aggregator,
-		writer:     writer,
-		authMgr:    authMgr,
-		logger:     logger,
+		collector:       collector,
+		decorator:       decorator,
+		aggregator:      aggregator,
+		writer:          writer,
+		authMgr:         authMgr,
+		version:         version,
+		logger:          logger,
+		heartbeatTicker: time.NewTicker(heartbeatInterval),
+		ctx:             ctx,
+		cancel:          cancel,
 	}
-	
+
 	// Initialize auth and start refresh loop
-	ctx := context.Background()
 	if err := authMgr.EnsureValidToken(ctx); err != nil {
 		logger.Error("Failed to get initial auth token", zap.Error(err))
 	}
 	authMgr.StartRefresh(ctx)
 	logger.Info("Auth refresh loop started")
-	
+
+	// Send initial heartbeat asynchronously
+	go p.sendHeartbeat()
+
+	// Start heartbeat worker
+	go p.heartbeatWorker()
+
 	return p
 }
-
 
 // Process executes the complete pipeline: Collect -> Decorate -> Aggregate -> Write
 func (p *Processor) Process(ctx context.Context) error {
@@ -290,6 +309,14 @@ func (p *Processor) GetLastMetricCount() int {
 func (p *Processor) Close() error {
 	p.logger.Debug("Closing pipeline processor")
 
+	// Cancel context to stop workers
+	p.cancel()
+
+	// Stop heartbeat ticker
+	if p.heartbeatTicker != nil {
+		p.heartbeatTicker.Stop()
+	}
+
 	// Close auth manager
 	p.authMgr.Close()
 
@@ -357,4 +384,37 @@ func (p *Processor) ProcessWithTimeout(ctx context.Context, timeout time.Duratio
 	defer cancel()
 	
 	return p.Process(timeoutCtx)
+}
+
+// heartbeatWorker sends periodic heartbeats
+func (p *Processor) heartbeatWorker() {
+	for {
+		select {
+		case <-p.heartbeatTicker.C:
+			p.sendHeartbeat()
+		case <-p.ctx.Done():
+			return
+		}
+	}
+}
+
+// sendHeartbeat sends a heartbeat to the resource manager
+func (p *Processor) sendHeartbeat() {
+	// Use processor context to ensure cancellation on shutdown
+	ctx, cancel := context.WithTimeout(p.ctx, 10*time.Second)
+	defer cancel()
+
+	// Get auth token
+	token := p.authMgr.GetCurrentToken()
+	if token == "" {
+		p.logger.Error("Failed to get auth token for heartbeat")
+		return
+	}
+
+	if err := p.writer.SendHeartbeat(ctx, token, p.version); err != nil {
+		p.logger.Error("Failed to send heartbeat", zap.Error(err))
+		return
+	}
+
+	p.logger.Info("Heartbeat sent successfully")
 }

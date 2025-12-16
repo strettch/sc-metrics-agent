@@ -44,6 +44,9 @@ type Config struct {
 	// Rate limiting
 	MaxRetries    int           `yaml:"max_retries" json:"max_retries"`
 	RetryInterval time.Duration `yaml:"retry_interval" json:"retry_interval"`
+
+	// Agent version
+	AgentVersion string `yaml:"agent_version" json:"agent_version"`
 }
 
 // CollectorConfig defines which collectors are enabled
@@ -168,6 +171,7 @@ func DefaultConfig() *Config {
 		LogLevel:      "info",
 		MaxRetries:    3,
 		RetryInterval: 5 * time.Second,
+		AgentVersion:  detectAgentVersion(),
 	}
 }
 
@@ -211,6 +215,22 @@ func getVMIDFromDMIDecode() string {
 
 	log.Printf("dmidecode not found or failed at all attempted paths")
 	return ""
+}
+
+// detectAgentVersion retrieves the agent version from the installed package
+func detectAgentVersion() string {
+	cmd := exec.Command("dpkg-query", "-W", "-f=${Version}", "sc-metrics-agent")
+	output, err := cmd.Output()
+	if err != nil {
+		return "unknown"
+	}
+
+	version := strings.TrimSpace(string(output))
+	if version == "" {
+		return "unknown"
+	}
+
+	return version
 }
 
 // Load reads configuration from environment variables and config file

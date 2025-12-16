@@ -11,15 +11,16 @@ import (
 	"time"
 
 	"github.com/klauspost/compress/snappy"
-	"go.uber.org/zap"
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
 	"github.com/strettch/sc-metrics-agent/pkg/clients/metadata"
+	"go.uber.org/zap"
 )
 
 const (
 	// ContentType for timeseries binary data
 	ContentTypeTimeseriesBinary = "application/timeseries-binary-0"
-	
+	ContentTypeJSON               = "application/json"
+
 	// Headers
 	HeaderContentType     = "Content-Type"
 	HeaderContentEncoding = "Content-Encoding"
@@ -35,6 +36,9 @@ const (
 	DefaultTimeout    = 30 * time.Second
 	DefaultMaxRetries = 3
 	DefaultRetryDelay = 5 * time.Second
+
+	// Agent Type
+	AgentTypeSCMetricsAgent = "SC-METRICS-AGENT"
 )
 
 // Client handles HTTP communication with the timeseries ingestor
@@ -72,6 +76,13 @@ type DiagnosticPayload struct {
 	MetricsCount    int                    `json:"metrics_count"`
 	CollectorStatus map[string]bool        `json:"collector_status"`
 	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// HeartbeatRequest represents the heartbeat payload
+type HeartbeatRequest struct {
+	AgentType string `json:"agentType"`
+	EventTime string `json:"eventTime"`
+	Version   string `json:"version"`
 }
 
 // NewClient creates a new HTTP client for timeseries data ingestion.
@@ -155,6 +166,35 @@ func (c *Client) SendMetrics(ctx context.Context, metrics []aggregate.MetricWith
 	}
 
 	return c.sendWithRetry(ctx, compressed, ContentTypeTimeseriesBinary, authToken, endpoint)
+}
+
+
+// SendHeartbeat sends agent heartbeat to the backend
+func (c *Client) SendHeartbeat(ctx context.Context, authToken, version string) (*Response, error) {
+	if c.authMgr == nil {
+		return nil, fmt.Errorf("AuthManager is required for heartbeat")
+	}
+
+	cloudAPIURL := c.authMgr.GetCloudAPIURL()
+	if cloudAPIURL == "" {
+		return nil, fmt.Errorf("empty CloudAPI URL from metadata")
+	}
+	url := fmt.Sprintf("%s/resource-manager/api/v1/compute/agent/heartbeat", cloudAPIURL)
+
+	payload := HeartbeatRequest{
+		AgentType: AgentTypeSCMetricsAgent,
+		EventTime: time.Now().UTC().Format(time.RFC3339),
+		Version:   version,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	c.logger.Debug("Sending heartbeat", zap.String("url", url))
+
+	return c.sendRequest(ctx, body, ContentTypeJSON, authToken, url)
 }
 
 // SendDiagnostics sends diagnostic information to the ingestor
