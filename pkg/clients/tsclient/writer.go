@@ -131,7 +131,7 @@ func (mw *metricWriter) SendHeartbeat(ctx context.Context, authToken string, ver
 		errorMsg += fmt.Sprintf(": %s", string(response.Body))
 	}
 	mw.logger.Error("Heartbeat failed", zap.String("error", errorMsg))
-	return fmt.Errorf(errorMsg)
+	return fmt.Errorf("%s", errorMsg)
 }
 
 // Close closes the metric writer and its underlying client

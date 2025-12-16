@@ -296,7 +296,10 @@ func (c *Client) sendRequest(ctx context.Context, data []byte, contentType strin
 
 	// Set headers
 	req.Header.Set(HeaderContentType, contentType)
-	req.Header.Set(HeaderContentEncoding, ContentEncodingSnappy)
+	// Only set compression header for binary content types (not JSON)
+	if contentType != ContentTypeJSON {
+		req.Header.Set(HeaderContentEncoding, ContentEncodingSnappy)
+	}
 	req.Header.Set(HeaderUserAgent, UserAgentValue)
 	
 	if authToken != "" {
