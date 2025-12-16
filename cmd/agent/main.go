@@ -133,6 +133,7 @@ func main() {
 		aggregator,
 		metricWriter,
 		authMgr,
+		cfg.AgentVersion,
 		logger,
 	)
 

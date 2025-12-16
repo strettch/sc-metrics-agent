@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/strettch/sc-metrics-agent/pkg/aggregate"
+	"go.uber.org/zap"
 )
 
 // MetricWriter defines the interface for writing metrics to an ingestor
 type MetricWriter interface {
 	WriteMetrics(ctx context.Context, metrics []aggregate.MetricWithValue, authToken string) error
 	WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool, authToken string) error
+	SendHeartbeat(ctx context.Context, authToken string, version string) error
 	Close() error
 }
 
@@ -110,6 +111,29 @@ func (mw *metricWriter) WriteDiagnostics(ctx context.Context, agentID string, st
 	return fmt.Errorf("failed to write diagnostics: %s", errorMsg)
 }
 
+// SendHeartbeat sends a heartbeat to the resource manager
+func (mw *metricWriter) SendHeartbeat(ctx context.Context, authToken string, version string) error {
+	mw.logger.Debug("Sending heartbeat")
+
+	response, err := mw.client.SendHeartbeat(ctx, authToken, version)
+	if err != nil {
+		mw.logger.Error("Failed to send heartbeat", zap.Error(err))
+		return fmt.Errorf("failed to send heartbeat: %w", err)
+	}
+
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		mw.logger.Info("Successfully sent heartbeat", zap.Int("status_code", response.StatusCode))
+		return nil
+	}
+
+	errorMsg := fmt.Sprintf("heartbeat returned status %d", response.StatusCode)
+	if len(response.Body) > 0 {
+		errorMsg += fmt.Sprintf(": %s", string(response.Body))
+	}
+	mw.logger.Error("Heartbeat failed", zap.String("error", errorMsg))
+	return fmt.Errorf(errorMsg)
+}
+
 // Close closes the metric writer and its underlying client
 func (mw *metricWriter) Close() error {
 	mw.logger.Debug("Closing metric writer")
@@ -172,6 +196,11 @@ func (bmw *BatchedMetricWriter) WriteMetrics(ctx context.Context, metrics []aggr
 // WriteDiagnostics delegates to the underlying writer
 func (bmw *BatchedMetricWriter) WriteDiagnostics(ctx context.Context, agentID string, status string, lastError string, collectorStatus map[string]bool, authToken string) error {
 	return bmw.writer.WriteDiagnostics(ctx, agentID, status, lastError, collectorStatus, authToken)
+}
+
+// SendHeartbeat delegates to the underlying writer
+func (bmw *BatchedMetricWriter) SendHeartbeat(ctx context.Context, authToken string, version string) error {
+	return bmw.writer.SendHeartbeat(ctx, authToken, version)
 }
 
 // Close closes the underlying writer
