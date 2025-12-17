@@ -23,7 +23,6 @@ jobs:
   beta-release:
     name: Build and Deploy Beta
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     permissions:
       contents: write
     outputs:
@@ -109,7 +108,8 @@ jobs:
           "beta" \
           "$DEPLOY_KEY" \
           "$REPO_HOST" \
-          "$REPO_USER"
+          "$REPO_USER" \
+          "${{ github.ref_name }}"
     
     - name: Create GitHub pre-release
       uses: ncipollo/release-action@v1
