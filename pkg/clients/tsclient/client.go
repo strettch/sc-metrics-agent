@@ -38,7 +38,7 @@ const (
 	DefaultRetryDelay = 5 * time.Second
 
 	// Agent Type
-	AgentTypeSCMetricsAgent = "SC-METRICS-AGENT"
+	AgentTypeSCMetricsAgent = "SC_METRICS_AGENT"
 )
 
 // Client handles HTTP communication with the timeseries ingestor
