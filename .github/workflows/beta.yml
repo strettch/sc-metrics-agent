@@ -3,7 +3,7 @@ name: Beta Release
 
 on:
   push:
-    branches: [main]
+    branches: [refactor/update-agent-type]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -23,7 +23,7 @@ jobs:
   beta-release:
     name: Build and Deploy Beta
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/refactor/update-agent-type'
     permissions:
       contents: write
     outputs:
