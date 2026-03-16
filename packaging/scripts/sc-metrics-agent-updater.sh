@@ -12,6 +12,7 @@ readonly LOCK_FILE="/var/lock/sc-metrics-agent-updater.lock"
 readonly CONFIG_FILE="/etc/${PACKAGE_NAME}/config.yaml"
 readonly MAX_RETRIES=3
 readonly RETRY_DELAY=30
+readonly APT_LOCK_TIMEOUT="${SC_APT_LOCK_TIMEOUT:-300}"
 readonly CONFIG_DOWNLOAD_SCRIPT="/usr/lib/sc-metrics-agent/download-config.sh"
 
 # Ensure we're running as root
@@ -70,6 +71,11 @@ sleep ${JITTER}
 export DEBIAN_FRONTEND=noninteractive
 export SC_AGENT_AUTO_UPDATER=1
 
+# Ensure every apt operation waits for the dpkg frontend lock.
+apt_get_with_lock() {
+    apt-get -o DPkg::Lock::Timeout="${APT_LOCK_TIMEOUT}" "$@"
+}
+
 # Function to check package health
 check_package_health() {
     local status=$(dpkg -l ${PACKAGE_NAME} 2>/dev/null | grep "^[ih]" | awk '{print $1}')
@@ -101,8 +107,7 @@ repair_package() {
     
     # Try reinstall
     log "INFO" "Reconfiguration failed, attempting reinstall..."
-    if apt-get install --reinstall -y \
-        -o DPkg::Lock::Timeout=300 \
+    if apt_get_with_lock install --reinstall -y \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold" \
         ${PACKAGE_NAME} 2>&1; then
@@ -139,9 +144,9 @@ for attempt in $(seq 1 ${MAX_RETRIES}); do
     log "INFO" "Updating package lists (attempt ${attempt}/${MAX_RETRIES})"
     
     # Clean package cache for fresh data
-    apt-get clean
+    apt_get_with_lock clean
     
-    if apt-get update 2>&1; then
+    if apt_get_with_lock update 2>&1; then
         log "INFO" "Package list update successful"
         break
     else
@@ -183,8 +188,7 @@ UPDATE_SUCCESS=false
 for attempt in $(seq 1 ${MAX_RETRIES}); do
     log "INFO" "Installation attempt ${attempt}/${MAX_RETRIES}"
     
-    if apt-get install -y \
-        -o DPkg::Lock::Timeout=300 \
+    if apt_get_with_lock install -y \
         -o Dpkg::Options::="--force-confdef" \
         -o Dpkg::Options::="--force-confold" \
         -o APT::Get::AutomaticRemove=false \
@@ -223,7 +227,7 @@ for attempt in $(seq 1 ${MAX_RETRIES}); do
         
         # Try to fix any issues before retry
         dpkg --configure -a 2>&1 || true
-        apt-get install -f -y 2>&1 || true
+        apt_get_with_lock install -f -y 2>&1 || true
     fi
 done
 

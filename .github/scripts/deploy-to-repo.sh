@@ -7,8 +7,8 @@ CHANNEL="${2:?Channel required}"
 DEPLOY_KEY="${3:?Deploy key required}"
 REPO_HOST="${4:?Repository host required}"
 REPO_USER="${5:?Repository user required}"
-# Optional branch to deploy (default: main)
-BRANCH="${6:-main}"
+GIT_REF="${6:-refs/heads/main}"
+GIT_SHA="${7:-}"
 
 # Setup SSH securely
 setup_ssh() {
@@ -35,20 +35,24 @@ setup_ssh() {
 deploy() {
     echo "Deploying version $VERSION to $CHANNEL repository..."
     
-	# Update repository code on remote using the requested branch
+	# Update repository code on remote using the requested revision
 	ssh repo-server bash -s <<-REMOTE_SCRIPT
 		set -euo pipefail
 
 		cd /root/sc-metrics-agent || exit 1
 
-		# Update git repository for the requested branch
-		echo "Updating repository... (branch: $BRANCH)"
-		git fetch origin "$BRANCH" --tags || true
-		# Create or reset local branch from origin/<branch>
-		if git show-ref --verify --quiet "refs/remotes/origin/$BRANCH"; then
-			git checkout -B "$BRANCH" "origin/$BRANCH"
+		# Update git repository to the exact workflow revision
+		echo "Updating repository to ${GIT_REF}${GIT_SHA:+ @ ${GIT_SHA}}..."
+		git fetch origin --tags
+		if [ -n "${GIT_SHA}" ]; then
+			git fetch origin "${GIT_SHA}"
+			git checkout --detach "${GIT_SHA}"
+		elif [ -n "${GIT_REF}" ]; then
+			git fetch origin "${GIT_REF}"
+			git checkout -B deploy-target FETCH_HEAD
 		else
-			git checkout -B "$BRANCH"
+			git checkout main
+			git reset --hard origin/main
 		fi
 		
 		# Clean up old tags
@@ -58,7 +62,8 @@ deploy() {
 		echo "Building and publishing packages..."
 		export RELEASE_TYPE="$CHANNEL"
 		export PACKAGE_VERSION="$VERSION"
-		export DEPLOY_BRANCH="$BRANCH"
+		export DEPLOY_GIT_REF="$GIT_REF"
+		export DEPLOY_GIT_SHA="$GIT_SHA"
 		
 		if ./setup_repo.sh; then
 		    echo "✅ Deployment successful"
