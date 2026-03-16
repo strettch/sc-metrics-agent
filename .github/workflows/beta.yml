@@ -109,7 +109,8 @@ jobs:
           "$DEPLOY_KEY" \
           "$REPO_HOST" \
           "$REPO_USER" \
-          "${{ github.ref_name }}"
+          "${{ github.ref }}" \
+          "${{ github.sha }}"
     
     - name: Create GitHub pre-release
       uses: ncipollo/release-action@v1
